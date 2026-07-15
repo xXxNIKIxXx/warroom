@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Warroom — {% if mode == 'register' %}{{ t('title_register') }}{% else %}{{ t('title_login') }}{% endif %}{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="lang-switch">
+      <a href="/lang/en" class="{% if lang == 'en' %}on{% endif %}">EN</a>
+      <a href="/lang/de" class="{% if lang == 'de' %}on{% endif %}">DE</a>
+    </div>
+    <div class="brand"><svg class="sigil" viewBox="0 0 24 28" aria-hidden="true"><path d="M12 1 22 5v9c0 7-4.6 11.4-10 13C6.6 25.4 2 21 2 14V5Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 6.5 16.5 14 12 21.5 7.5 14Z" fill="currentColor"/></svg><span class="brand-name">WARROOM</span></div>
+    <p class="auth-sub">{{ t('brand_sub') }}</p>
+    <p class="auth-about"><a href="/about">{{ t('about_link') }}</a></p>
+    {% if error %}<div class="auth-err">{{ error }}</div>{% endif %}
+
+    {% if mode == 'register' %}
+    {% if full %}
+    <div class="auth-note">{{ t('reg_full', n=max_users) }}</div>
+    <p class="auth-contact"><a class="contact-btn" href="mailto:{{ contact_mail }}?subject=warroom">{{ t('contact_btn') }}</a></p>
+    {% else %}
+    <form method="post" action="/register" class="auth-form">
+      <label>{{ t('auth_pw') }} <small>{{ t('auth_pw_note') }}</small>
+        <input type="password" name="password" minlength="6" required autocomplete="new-password"></label>
+      <label>{{ t('auth_key') }} <small>{{ t('auth_key_note') }}</small>
+        <input type="text" name="api_key" required autocomplete="off" spellcheck="false" placeholder="{{ t('auth_key_ph') }}"></label>
+      <p class="auth-hint">{{ t('auth_hint') | safe }}</p>
+      <button class="auth-btn" type="submit">{{ t('auth_create') }}</button>
+    </form>
+    {% endif %}
+    <p class="auth-alt">{{ t('auth_have') }} <a href="/login">{{ t('auth_login_link') }}</a></p>
+    {% else %}
+    <form method="post" action="/login" class="auth-form">
+      <label>{{ t('auth_username') }}
+        <input type="text" name="username" required autocomplete="username"></label>
+      <label>{{ t('auth_pw') }}
+        <input type="password" name="password" required autocomplete="current-password"></label>
+      <button class="auth-btn" type="submit">{{ t('auth_login_btn') }}</button>
+    </form>
+    <p class="auth-alt">{{ t('auth_new') }} <a href="/register">{{ t('auth_register_link') }}</a></p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

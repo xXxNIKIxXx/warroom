@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}Warroom — {{ t('about_title') }}{% endblock %}
+{% block bodyclass %}doc{% endblock %}
+{% block content %}
+<div class="auth-wrap about-wrap">
+  <div class="auth-card about-card">
+    <div class="lang-switch">
+      <a href="/lang/en?next=/about" class="{% if lang == 'en' %}on{% endif %}">EN</a>
+      <a href="/lang/de?next=/about" class="{% if lang == 'de' %}on{% endif %}">DE</a>
+    </div>
+    <div class="brand"><svg class="sigil" viewBox="0 0 24 28" aria-hidden="true"><path d="M12 1 22 5v9c0 7-4.6 11.4-10 13C6.6 25.4 2 21 2 14V5Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 6.5 16.5 14 12 21.5 7.5 14Z" fill="currentColor"/></svg><span class="brand-name">WARROOM</span></div>
+    <p class="auth-sub">{{ t('about_title') }}</p>
+
+    {% if lang == 'de' %}
+    <div class="about-body">
+      <h2>Was ist das hier?</h2>
+      <p>Warroom ist ein <b>Fan-Companion für wdgwars.pl</b>: Lagekarte, Wächter
+      (meldet, wenn jemand dein Revier anfasst), Raid-Planer und Crew-Funktionen.
+      Es ist <b>nicht offiziell</b> — WDGWars und LOCOSP bauen es nicht, betreiben es
+      nicht und haften nicht dafür. Gebaut und betrieben wird es von einem einzelnen
+      Spieler aus der Community.</p>
+
+      <h2>Was passiert mit deinem API-Key?</h2>
+      <ul>
+        <li>Bei der Registrierung wird er einmal per <code>/api/me</code> geprüft —
+        dein wdgwars-Name wird dein Login. Keine E-Mail, keine Telefonnummer,
+        Warroom fragt gar nicht erst danach.</li>
+        <li>Der Key liegt <b>verschlüsselt</b> (Fernet/AES) in der Datenbank und wird
+        nur im Arbeitsspeicher entschlüsselt, um mit der wdgwars-API zu sprechen.</li>
+        <li>Warroom <b>liest nur</b>. Es lädt niemals in deinem Namen etwas hoch,
+        scannt nichts und ändert nichts an deinem wdgwars-Account. Abgefragt werden
+        alle 5 Minuten: dein Profil, deine APs, dein Team sowie die öffentliche
+        Territoriums-Karte und das Leaderboard — dieselben Daten, die die API jedem
+        Spieler zeigt.</li>
+        <li>Du behältst die Kontrolle: <b>rotierst du deinen Key</b> im
+        wdgwars-Profil, ist der gespeicherte sofort wertlos.</li>
+      </ul>
+
+      <h2>Was speichert Warroom über dich?</h2>
+      <ul>
+        <li>wdgwars-Name, Gang, dein Warroom-Passwort als bcrypt-Hash (nie im
+        Klartext) und den verschlüsselten Key.</li>
+        <li>Dein Revier als <b>Zähler pro Karten-Zelle</b> — dieselben Zellen wie auf
+        der wdgwars-Karte. Deine rohen APs (genaue Positionen, BSSIDs, Namen) werden
+        beim Abruf sofort zu Zellen zusammengefasst und <b>nicht gespeichert</b>.</li>
+        <li>Besitzwechsel in deinem Revier (der Wächter-Feed) und deine
+        Statistik-Verläufe (nackte Zahlen für die Charts).</li>
+        <li>Nur wenn du es aktiv einschaltest: Crew-Verbindungen, deine
+        Live-Position (ein einziger, immer überschriebener Punkt — läuft nach 1 h /
+        4 h automatisch ab, es entsteht <b>kein Bewegungsprofil</b>) und das
+        Push-Abo deines Geräts.</li>
+      </ul>
+
+      <h2>Was Warroom nicht tut</h2>
+      <p>Keine Analytics, keine Tracker, keine Werbung, kein Verkauf oder Teilen von
+      Daten. Über deinen Key sieht Warroom nur, was die API dir selbst zeigt — in
+      fremde Accounts schaut hier niemand. Es fallen gewöhnliche
+      Webserver-Zugriffe an wie bei jeder Website; ausgewertet wird daraus nichts.</p>
+
+      <h2>Löschen</h2>
+      <p>In der App unter <b>Konto → Account löschen</b>: entfernt sofort und
+      endgültig alles — Account, Key, Revier-Daten, Ereignisse, Positionen,
+      Push-Geräte, Crew-Verbindungen. Aus den Server-Backups fällt es nach spätestens
+      14 Tagen. Dein wdgwars-Account bleibt davon komplett unberührt.</p>
+
+      <h2>Beteiligte Dritte</h2>
+      <p>Cloudflare (TLS/CDN vor der Domain), OpenStreetMap Overpass (bekommt nur
+      Zell-Koordinaten — nicht wer du bist — um Tour-Wegpunkte auf Straßen zu legen)
+      und der Push-Dienst deines Browsers für Benachrichtigungen (Inhalte
+      verschlüsselt).</p>
+
+      <h2>Klartext zum Vertrauen</h2>
+      <p>Wie bei <i>jedem</i> Dienst, dem du einen Key gibst, gilt: Wer den Server
+      betreibt, könnte ihn technisch benutzen. Kein gehostetes Tool kann dir das
+      Gegenteil beweisen. Behandle den Key wie ein Passwort — gib ihn nur her, wenn
+      du dem Tool traust, und rotiere ihn jederzeit. Fragen? Stell sie offen im
+      WDGWars-Discord.</p>
+    </div>
+    {% else %}
+    <div class="about-body">
+      <h2>What is this?</h2>
+      <p>Warroom is a <b>fan-made companion for wdgwars.pl</b>: battle map, watcher
+      (alerts when someone steps on your turf), raid planner and crew features.
+      It is <b>not official</b> — WDGWars and LOCOSP do not build, run or endorse
+      it. It is built and operated by a single player from the community.</p>
+
+      <h2>What happens with your API key?</h2>
+      <ul>
+        <li>At sign-up it is checked once via <code>/api/me</code> — your wdgwars
+        name becomes your login. No email, no phone number; Warroom doesn't even
+        ask.</li>
+        <li>The key is stored <b>encrypted</b> (Fernet/AES) in the database and is
+        only decrypted in memory to talk to the wdgwars API.</li>
+        <li>Warroom <b>only reads</b>. It never uploads in your name, never scans,
+        never changes anything on your wdgwars account. Every 5 minutes it fetches:
+        your profile, your APs, your team, plus the public territory map and
+        leaderboard — the same data the API shows every player.</li>
+        <li>You stay in control: <b>rotate your key</b> in your wdgwars profile and
+        the stored one instantly becomes useless.</li>
+      </ul>
+
+      <h2>What Warroom stores about you</h2>
+      <ul>
+        <li>Your wdgwars name, gang, a bcrypt hash of your Warroom password (never
+        the password itself) and your encrypted key.</li>
+        <li>Your turf as <b>counts per map cell</b> — the same cells you see on the
+        wdgwars map. Your raw APs (exact positions, BSSIDs, names) are aggregated
+        into cells on arrival and <b>never stored</b>.</li>
+        <li>Ownership changes on your turf (the watcher feed) and your stats history
+        (bare numbers for the charts).</li>
+        <li>Only if you actively turn it on: crew links, your live position (a
+        single, always-overwritten point that auto-expires after 1 h / 4 h — <b>no
+        movement history</b>) and your device's push subscription.</li>
+      </ul>
+
+      <h2>What Warroom does not do</h2>
+      <p>No analytics, no trackers, no ads, no selling or sharing of data. Through
+      your key Warroom only sees what the API shows you yourself — nobody peeks into
+      other accounts here. Ordinary web-server access logs exist like on any
+      website; nothing is done with them.</p>
+
+      <h2>Deleting</h2>
+      <p>In the app under <b>Account → Delete account</b>: immediately and
+      permanently removes everything — account, key, turf data, events, positions,
+      push devices, crew links. It drops out of server backups within 14 days at
+      most. Your wdgwars account is completely untouched by this.</p>
+
+      <h2>Third parties involved</h2>
+      <p>Cloudflare (TLS/CDN in front of the domain), OpenStreetMap Overpass (gets
+      only cell coordinates — not who you are — to snap tour waypoints onto roads),
+      and your browser's push service for notifications (payloads encrypted).</p>
+
+      <h2>Straight talk about trust</h2>
+      <p>As with <i>any</i> service you hand a key to: whoever runs the server could
+      technically use it. No hosted tool can prove otherwise to you. Treat the key
+      like a password — only hand it over if you trust the tool, and rotate it any
+      time. Questions? Ask them openly on the WDGWars Discord.</p>
+    </div>
+    {% endif %}
+
+    <p class="auth-contact"><a class="contact-btn" href="mailto:{{ contact_mail }}?subject=warroom">{{ t('contact_btn') }}</a></p>
+    <p class="auth-alt"><a href="https://github.com/Taccooh/warroom">Source code · AGPL-3.0</a></p>
+    <p class="auth-alt"><a href="/login">{{ t('about_back') }}</a></p>
+  </div>
+</div>
+{% endblock %}

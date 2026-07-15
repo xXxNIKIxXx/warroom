@@ -1,0 +1,20 @@
+# Server-Variante hinter einem Reverse-Proxy im selben Docker-Netz: kein Host-Port.
+# Alles Persistente (SQLite-DB, master.key, vapid.pem) liegt im ./data-Volume, NICHT
+# im Image. Standalone: expose durch `ports: ["8000:8000"]` ersetzen, networks weg.
+services:
+  warroom:
+    build: .
+    image: warroom:local
+    container_name: warroom
+    restart: unless-stopped
+    networks:
+      - caddy
+    expose:
+      - "8000"
+    volumes:
+      - ./data:/app/data
+
+networks:
+  caddy:
+    name: caddy_default
+    external: true

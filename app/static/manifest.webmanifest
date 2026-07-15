@@ -1,0 +1,13 @@
+{
+  "name": "Warroom — wdgwars",
+  "short_name": "Warroom",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#07090d",
+  "theme_color": "#07090d",
+  "icons": [
+    { "src": "/static/icon-raider.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icon-raider.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

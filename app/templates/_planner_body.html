@@ -1,0 +1,33 @@
+{# Nur das Geruest. Die Zeilen baut der Client aus dem vollen Datensatz und rendert
+   davon NUR ein Fenster: ein grosses Revier hat schnell tausende Zellen — gefiltert
+   und sortiert wird ueber alle, im DOM landen nur die obersten. #}
+<div class="pl-tools">
+  <div class="pl-chips" id="pl-filters">
+    <button type="button" class="pl-chip on" data-filter="all">{{ t('flt_all') }} <b data-count="all">{{ n_all }}</b></button>
+    {% if n_ahead %}<button type="button" class="pl-chip" data-filter="ahead">{{ t('flt_ahead') }} <b data-count="ahead">{{ n_ahead }}</b></button>{% endif %}
+    {% if n_free %}<button type="button" class="pl-chip" data-filter="free">{{ t('free_tag') }} <b data-count="free">{{ n_free }}</b></button>{% endif %}
+    {% if n_virgin %}<button type="button" class="pl-chip" data-filter="virgin">{{ t('flt_virgin') }} <b data-count="virgin">{{ n_virgin }}</b></button>{% endif %}
+    {% for g in gangs %}
+    <button type="button" class="pl-chip" data-filter="gang" data-gang="{{ g.name | e }}">
+      <span class="pl-dot"{% if g.color %} style="background:{{ g.color | e }}"{% endif %}></span>{{ g.name }} <b>{{ g.n }}</b>
+    </button>
+    {% endfor %}
+  </div>
+  {# Naechste zuerst als Standard: die App wird beim FAHREN benutzt — ein Ziel
+     3000 km weit weg ist der leichteste Flip der Welt und trotzdem nutzlos. #}
+  <label class="pl-sort">{{ t('sort_by') }}
+    <select id="pl-sort">
+      <option value="dist" selected>{{ t('sort_dist') }}</option>
+      <option value="easy">{{ t('sort_easy') }}</option>
+      <option value="aps">{{ t('sort_aps') }}</option>
+    </select>
+  </label>
+</div>
+
+<ol class="planer-list" id="pl-list"></ol>
+<p class="hint pl-none" id="pl-none" hidden>{{ t('flt_none') }}</p>
+<div class="pl-more" id="pl-more" hidden>
+  <span class="pl-more-txt" id="pl-more-txt"></span>
+  <button type="button" class="rb-jump" id="pl-more-btn">{{ t('show_more') }}</button>
+</div>
+{% if not n_all %}<p class="empty">{{ t('planner_empty') }}</p>{% endif %}

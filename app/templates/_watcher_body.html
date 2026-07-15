@@ -1,0 +1,38 @@
+{# Wächter-Inhalt (Fronten + Meldungen) — vom Live-Update in-place ersetzt #}
+{% if fronts %}
+<ul class="front-list">
+  {% for f in fronts %}
+  <li class="front-item">⚑ {{ t('front_line', g=(f.gang | e), dir=t('dir_' + f.dir), n=f.n) | safe }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% if events %}
+<ul class="event-list">
+  {% for e in events %}
+  <li class="ev ev-{{ e.kind }} prox-{{ e.proximity or 'near' }}"
+      {% if e.lat is not none and e.lng is not none %}data-lat="{{ e.lat }}" data-lng="{{ e.lng }}"{% endif %}>
+    {%- set mv = ('', '2', '3')[e.id % 3] -%}
+    <div class="ev-motto">
+      {%- if e.proximity in ('mine', 'gang') -%}
+        {% if e.kind == 'lost' %}{{ t('watch_step' ~ mv) }}
+        {%- elif e.kind == 'captured' %}{{ t('watch_reclaim' ~ mv) }}
+        {%- elif e.kind == 'freed' %}{{ t('watch_empty' ~ mv) }}
+        {%- else %}{{ t('watch_skirmish' ~ mv) }}{% endif %}
+      {%- else -%}
+        {% if e.kind == 'flipped' %}{{ t('watch_skirmish' ~ mv) }}{% else %}{{ t('watch_near' ~ mv) }}{% endif %}
+      {%- endif -%}
+    </div>
+    <div class="ev-detail">
+      <span class="ev-kind">{{ t('ev_' + e.kind) }}</span>
+      {%- if e.kind == 'lost' %} {{ t('ev_lost_txt', g=(e.new_gang | e)) | safe }}
+      {%- elif e.kind == 'captured' %} {{ t('ev_captured_txt', g=((e.old_gang or t('nobody')) | e)) | safe }}
+      {%- elif e.kind == 'flipped' %} {{ t('ev_flipped_txt', a=(e.old_gang | e), b=(e.new_gang | e)) | safe }}
+      {%- else %} {{ (e.new_gang or e.old_gang) | e }}{% endif %}
+      · {{ e.ts }}
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="hint big">{{ t('watcher_empty') }}</p>
+{% endif %}

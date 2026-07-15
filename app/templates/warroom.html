@@ -1,0 +1,1167 @@
+{% extends "base.html" %}
+{% block bodyclass %}app{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
+<script src="/static/vendor/leaflet/leaflet.js" defer></script>
+{# Auto-Refresh NUR solange der Erst-Poll wirklich noch läuft — ein Account
+   ohne APs (terr_init gesetzt, footprint leer) bekommt sonst eine Endlosschleife #}
+{% if not meta.terr_init %}<meta http-equiv="refresh" content="6">{% endif %}
+{% endblock %}
+{% block content %}
+<header class="top">
+  <div class="brand"><svg class="sigil" viewBox="0 0 24 28" aria-hidden="true"><path d="M12 1 22 5v9c0 7-4.6 11.4-10 13C6.6 25.4 2 21 2 14V5Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 6.5 16.5 14 12 21.5 7.5 14Z" fill="currentColor"/></svg><span class="brand-name">WARROOM</span> <small>{{ meta.username or 'wdgwars' }}</small></div>
+  <div class="chips">
+    <span class="chip"><b>{{ (stats.total if stats else meta.my_aps_total) | n }}</b> APs</span>
+    <span class="chip">{{ meta.gang or '—' }}{% if stats and stats.gang_rank %} <b>#{{ stats.gang_rank }}</b>{% endif %}</span>
+    <span class="chip gold">◈ {{ (stats.credits if stats else 0) | n }}</span>
+    <span class="lang-switch">
+      <a href="/lang/en" class="{% if lang == 'en' %}on{% endif %}">EN</a>
+      <a href="/lang/de" class="{% if lang == 'de' %}on{% endif %}">DE</a>
+    </span>
+    <form method="post" action="/logout" class="logout-form"><button class="chip logout" type="submit" title="{{ t('logout') }}">⏻</button></form>
+  </div>
+</header>
+
+<div class="revier-bar">
+  <div class="rb-counts">
+    <span class="rb mine"><b>{{ counts.mine }}</b> {{ t('mine') }}</span>
+    <span class="rb enemy"><b>{{ counts.enemy }}</b> {{ t('enemy') }}</span>
+    <span class="rb free"><b>{{ counts.free }}</b> {{ t('free') }}</span>
+  </div>
+  {% if theatres %}
+  <div class="rb-jumps">
+    {% for th in theatres %}
+    <button class="rb-jump" data-b="{{ th.bounds | tojson }}">{{ t(th.key) }} · {{ th.n }}</button>
+    {% endfor %}
+    <button class="rb-jump" id="jump-all">{{ t('all') }}</button>
+    {% if virgin_all %}
+    <button class="rb-jump layer-chip" data-layer="virgin" title="{{ t('virgin_count', n=(virgin_all | length)) }}">
+      ◇ {{ t('virgin_layer') }} · {{ virgin_all | length }}
+    </button>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% if not meta.terr_init %}
+<div class="loading-bar">{{ t('loading') }}</div>
+{% elif meta.footprint_cells == 0 %}
+<div class="loading-bar">{{ t('empty_map') }}</div>
+{% endif %}
+
+<div class="stage">
+  <div id="map" class="map"></div>
+  <div class="hud-frame" aria-hidden="true"></div>
+  <div id="map-hero" class="map-hero" aria-hidden="true">
+    <svg viewBox="0 0 44 44">
+      <circle cx="22" cy="22" r="18" fill="none" stroke="currentColor" stroke-width="1" opacity="0.55"/>
+      <path d="M40 22h-4M22 40v-4M4 22h4" stroke="currentColor" stroke-width="1" opacity="0.55"/>
+      <path d="M22 5 25.2 22 22 18.8 18.8 22Z" fill="currentColor"/>
+      <path d="M22 39 18.8 22 22 25.2 25.2 22Z" fill="currentColor" opacity="0.3"/>
+    </svg>
+  </div>
+  <div id="nav" class="nav-banner" hidden></div>
+  <div id="toast" class="toast" hidden>
+    <span class="toast-ape" id="toast-ape" aria-hidden="true"></span>
+    <div class="toast-txt" id="toast-txt"></div>
+  </div>
+  <div id="here" class="here-banner" hidden></div>
+</div>
+
+<div class="panel">
+  <div class="tabs">
+    <button class="tab active" data-tab="planer">{{ t('tab_planner') }}</button>
+    <button class="tab" data-tab="waechter">{{ t('tab_watcher') }} <span class="badge" id="watch-badge" {% if not events %}hidden{% endif %}>{{ events | length }}</span></button>
+    <button class="tab" data-tab="friends">{{ t('tab_friends') }}{% if friends.incoming %} <span class="badge">{{ friends.incoming | length }}</span>{% endif %}</button>
+    <button class="tab" data-tab="info">{{ t('tab_info') }}</button>
+  </div>
+
+  <div class="tabc" data-tabc="planer">
+    <div class="tour-panel" id="tour-panel" hidden>
+      <div class="tour-headrow"><b>{{ t('tour_head') }}</b><span class="tour-count" id="tour-count"></span></div>
+      <ol class="tour-list" id="tour-list"></ol>
+      <div class="tour-warn" id="tour-warn" hidden></div>
+      <div class="tour-btns">
+        <button type="button" class="rb-jump" id="tour-optimize">{{ t('tour_optimize') }}</button>
+        <button type="button" class="rb-jump go" id="tour-go">{{ t('tour_go') }}</button>
+        <a class="rb-jump" id="tour-maps" target="_blank" rel="noopener">{{ t('tour_maps') }}</a>
+        <button type="button" class="rb-jump stop" id="tour-clear">{{ t('tour_clear') }}</button>
+      </div>
+    </div>
+    <p class="hint tour-hint" id="tour-hint">{{ t('tour_empty') }}</p>
+    <p class="hint">{{ t('planner_hint') | safe }}
+      {% if free %}<br>{{ t('planner_free_extra', n=counts.free) | safe }}{% endif %}</p>
+    <div id="planner-body">{% include "_planner_body.html" %}</div>
+  </div>
+
+  <div class="tabc" data-tabc="waechter" hidden>
+    <form method="post" action="/watch" class="watch-setting">
+      <label>{{ t('watch_setting') }}
+        <select name="level" onchange="this.form.submit()">
+          <option value="own" {% if watch_level == 'own' %}selected{% endif %}>{{ t('watch_opt_own') }}</option>
+          <option value="turf" {% if watch_level == 'turf' %}selected{% endif %}>{{ t('watch_opt_turf') }}</option>
+          <option value="near" {% if watch_level == 'near' %}selected{% endif %}>{{ t('watch_opt_near') }}</option>
+        </select>
+      </label>
+    </form>
+    <div class="push-box" id="push-box" hidden>
+      <div class="push-row">
+        <span class="push-status" id="push-status">{{ t('push_off') }}</span>
+        <button type="button" class="rb-jump" id="push-toggle">{{ t('push_enable') }}</button>
+      </div>
+      <p class="hint">{{ t('push_hint') }}</p>
+    </div>
+    <div id="watcher-body">{% include "_watcher_body.html" %}</div>
+  </div>
+
+  <div class="tabc" data-tabc="friends" hidden>
+    <div class="share-box {% if sharing.active %}on{% endif %}">
+      <div class="share-status">
+        {% if sharing.active %}{{ t('share_active', t=sharing.until[11:16]) }}
+        {%- else %}{{ t('share_off') }}{% endif %}
+      </div>
+      <p class="hint">{{ t('share_hint') }}</p>
+      <div class="btn-row">
+        <form method="post" action="/share"><input type="hidden" name="minutes" value="60"><button class="rb-jump" type="submit">{{ t('share_1h') }}</button></form>
+        <form method="post" action="/share"><input type="hidden" name="minutes" value="240"><button class="rb-jump" type="submit">{{ t('share_4h') }}</button></form>
+        {% if sharing.active %}<form method="post" action="/share"><input type="hidden" name="minutes" value="0"><button class="rb-jump stop" type="submit">{{ t('share_stop') }}</button></form>{% endif %}
+      </div>
+    </div>
+
+    {# Feld NICHT "username" nennen: Safari sieht ein username-Feld + die
+       Passwort-Felder im Info-Tab und haelt das Ganze fuer ein Login-Formular
+       ("Bei mechanics-toolbox anmelden?"). #}
+    <form method="post" action="/friends/add" class="friend-add">
+      <input type="text" name="crewmate" id="crewmate" placeholder="{{ t('auth_username') }}"
+             required autocomplete="off" autocapitalize="none" autocorrect="off"
+             spellcheck="false" data-1p-ignore data-lpignore="true"
+             aria-label="{{ t('friends_add_btn') }}">
+      <button class="rb-jump" type="submit">{{ t('friends_add_btn') }}</button>
+    </form>
+
+    {% if friends.incoming %}
+    <h3 class="pl-sub">{{ t('friends_incoming') }}</h3>
+    <ul class="friend-list">
+      {% for f in friends.incoming %}
+      <li>
+        <span class="fr-name">{{ f.username }}{% if f.gang %} <small>{{ f.gang }}</small>{% endif %}</span>
+        <span class="fr-act">
+          <form method="post" action="/friends/accept"><input type="hidden" name="other_id" value="{{ f.id }}"><button class="rb-jump" type="submit">{{ t('accept') }}</button></form>
+          <form method="post" action="/friends/remove"><input type="hidden" name="other_id" value="{{ f.id }}"><button class="rb-jump stop" type="submit">✕</button></form>
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    <h3 class="pl-sub">{{ t('friends_your') }}</h3>
+    {% if friends.accepted %}
+    <ul class="friend-list">
+      {% for f in friends.accepted %}
+      <li>
+        <span class="fr-name">{{ f.username }}{% if f.gang %} <small>{{ f.gang }}</small>{% endif %}</span>
+        <span class="fr-act">
+          <form method="post" action="/friends/remove" onsubmit="return confirm('{{ t('remove') }}?')"><input type="hidden" name="other_id" value="{{ f.id }}"><button class="rb-jump stop" type="submit">{{ t('remove') }}</button></form>
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="hint">{{ t('friends_none') }}</p>
+    {% endif %}
+
+    {% if friends.outgoing %}
+    <h3 class="pl-sub">{{ t('friends_outgoing') }}</h3>
+    <ul class="friend-list">
+      {% for f in friends.outgoing %}<li><span class="fr-name">{{ f.username }}</span></li>{% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+
+  <div class="tabc" data-tabc="info" hidden>
+    <div class="info-grid">
+      <div><span>{{ t('info_you') }}</span><b>{{ meta.username }}</b></div>
+      <div><span>{{ t('info_wifi_ble') }}</span><b>{{ (stats.wifi if stats else 0) | n }} / {{ (stats.ble if stats else 0) | n }}</b></div>
+      <div><span>{{ t('info_7d') }}</span><b>{{ (stats.recent_7d if stats else 0) | n }}</b></div>
+      <div><span>{{ t('info_gang') }}</span><b>{{ meta.gang }} · #{{ stats.gang_rank if stats else '—' }}</b></div>
+      <div><span>{{ t('info_points') }}</span><b>{{ (stats.gang_points if stats else 0) | n }}</b></div>
+      <div><span>{{ t('info_team_cl') }}</span><b>{{ (stats.team_captured if stats else 0) | n }} / {{ (stats.team_lost if stats else 0) | n }}</b></div>
+      <div><span>{{ t('info_turf') }}</span><b>{{ meta.footprint_cells }} {{ t('cells_word') }}</b></div>
+      <div><span>{{ t('info_last_poll') }}</span><b>{{ meta.last_poll }}</b></div>
+      <div><span>{{ t('info_users') }}</span><b>{{ user_count }} / {{ max_users }}</b></div>
+    </div>
+    <h3 class="pl-sub">{{ t('chart_head') }}</h3>
+    <div id="charts" class="charts"><p class="hint">{{ t('chart_none') }}</p></div>
+
+    <h3 class="pl-sub">{{ t('pw_head') }}</h3>
+    {% if pw == 'ok' %}<div class="ok-msg">{{ t('pw_ok') }}</div>
+    {% elif pw == 'err' %}<div class="auth-err">{{ t('pw_err') }}</div>{% endif %}
+    <form method="post" action="/account/password" class="pw-form">
+      <input type="password" name="old" placeholder="{{ t('pw_old') }}" required autocomplete="current-password">
+      <input type="password" name="new" minlength="6" placeholder="{{ t('pw_new') }}" required autocomplete="new-password">
+      <button class="rb-jump" type="submit">{{ t('pw_btn') }}</button>
+    </form>
+    <p class="hint">{{ t('info_note') }}</p>
+
+    <h3 class="pl-sub danger">{{ t('del_head') }}</h3>
+    {% if del_state == 'err' %}<div class="auth-err">{{ t('del_err') }}</div>{% endif %}
+    <p class="hint">{{ t('del_hint') }}</p>
+    <form method="post" action="/account/delete" class="pw-form del-form"
+          onsubmit="return confirm('{{ t('del_confirm') }}')">
+      <input type="password" name="password" placeholder="{{ t('pw_old') }}" required autocomplete="current-password">
+      <button class="rb-jump stop" type="submit">{{ t('del_btn') }}</button>
+    </form>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var cells = {{ cells | tojson }};
+  var targets = {{ targets | tojson }};
+  var theatres = {{ theatres | tojson }};
+  var grid = {{ grid | tojson }};
+  // Neuland kommt als flache Indexliste [i,j,i,j,…] — lat/lng rechnen wir hier aus
+  // (bei tausenden Zellen spart das ~80 % Payload). Braucht grid → erst hier.
+  function expandVirgin(flat) {
+    var out = [];
+    for (var k = 0; k + 1 < flat.length; k += 2) {
+      var i = flat[k], j = flat[k + 1];
+      out.push({i: i, j: j, lat: (i + 0.5) * grid.lat, lng: (j + 0.5) * grid.lng});
+    }
+    return out;
+  }
+  var virginCells = expandVirgin({{ virgin_all | tojson }});
+  var T = {{ js | tojson }};
+  var SHARING = {{ sharing.active | tojson }};
+  var HISTORY = {{ history | tojson }};
+  var initTab = {{ (tab or 'planer') | tojson }};
+  var POLL_EPOCH = {{ poll_epoch | tojson }};
+  var COLOR = {mine: '#e8b64c', enemy: '#c9313d', free: '#5f7789'};
+
+  function tf(s, o) { return s.replace(/\{(\w+)\}/g, function (_, k) { return o[k]; }); }
+  function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+  var cellByKey = {};
+  cells.forEach(function (c) { cellByKey[c.i + '_' + c.j] = c; });
+  function cellAt(lat, lng) {
+    var i = Math.floor(lat / grid.lat + 1e-9), j = Math.floor(lng / grid.lng + 1e-9);
+    return cellByKey[i + '_' + j] || null;
+  }
+
+  var map = L.map('map', {zoomControl: true, zoomSnap: 0.5}).setView([50, -20], 3);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  }).addTo(map);
+
+  var rects = [];
+  var cellLayer = L.layerGroup().addTo(map);
+  function renderCells() {
+    cellLayer.clearLayers();
+    rects = [];
+    cellByKey = {};
+    cells.forEach(function (c) { cellByKey[c.i + '_' + c.j] = c; });
+    cells.forEach(function (c) {
+      var lead = c.status === 'enemy' && c.gap === 0;
+      // Gegner in ihrer echten Gang-Farbe (CHAOS vs BWM unterscheidbar), eigene gold, frei kalt
+      var fill = c.status === 'enemy' ? (c.color || COLOR.enemy) : COLOR[c.status];
+      var r = L.rectangle(c.b, {
+        color: lead ? '#ffd15e' : fill, weight: lead ? 2 : 1,
+        opacity: c.status === 'free' ? 0.6 : 0.9, fillColor: fill,
+        fillOpacity: c.status === 'free' ? 0.12 : 0.4, dashArray: c.status === 'free' ? '3' : null
+      }).addTo(cellLayer);
+      var label = c.status === 'mine' ? T.gang_your
+        : c.status === 'enemy' ? tf(T.gang_holds, {g: esc(c.gang), n: (c.count || 0)})
+        : T.unclaimed;
+      var extra = c.status === 'enemy'
+        ? '<br>' + (c.gap === 0 ? '<b>' + T.lead_excl + '</b>' : tf(T.to_flip, {n: c.gap}))
+        : '';
+      var cc = [(c.i + 0.5) * grid.lat, (c.j + 0.5) * grid.lng];
+      r.bindPopup('<b>' + label + '</b><br>' + tf(T.your_aps, {n: (c.my_aps || 0)}) + extra +
+        '<br><button type="button" class="cell-tour" data-lat="' + cc[0].toFixed(5) + '" data-lng="' + cc[1].toFixed(5) +
+        '" data-label="' + label.replace(/<[^>]*>/g, '').replace(/"/g, '&quot;') + '">{{ t("tour_add_pin") }}</button>');
+      rects.push(r);
+    });
+  }
+  renderCells();
+
+  // ---- Neuland: nie gescannte Zellen. Eigener Layer, per Chip zuschaltbar —
+  // es sind schnell tausende, die sollen die Karte nicht dauerhaft zupflastern.
+  var virginLayer = L.layerGroup();
+  var virginOn = false;
+  var virginByKey = {};
+  function indexVirgin() {
+    virginByKey = {};
+    virginCells.forEach(function (v) { virginByKey[v.i + '_' + v.j] = v; });
+  }
+  indexVirgin();
+  function renderVirgin() {
+    virginLayer.clearLayers();
+    if (!virginOn) return;
+    virginCells.forEach(function (v) {
+      var b = [[v.i * grid.lat, v.j * grid.lng],
+               [(v.i + 1) * grid.lat, (v.j + 1) * grid.lng]];
+      L.rectangle(b, {color: '#8fa7bd', weight: 1, opacity: 0.5, fillColor: '#8fa7bd',
+                      fillOpacity: 0.10, dashArray: '2 3'})
+        .bindPopup('<b>' + T.virgin_land + '</b><br>' + T.virgin_pop +
+          '<br><button type="button" class="cell-tour" data-lat="' + v.lat.toFixed(5) +
+          '" data-lng="' + v.lng.toFixed(5) + '" data-label="' + T.virgin_land +
+          '">{{ t("tour_add_pin") }}</button>')
+        .addTo(virginLayer);
+    });
+  }
+  document.querySelectorAll('.layer-chip[data-layer="virgin"]').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      virginOn = !virginOn;
+      chip.classList.toggle('on', virginOn);
+      if (virginOn) { virginLayer.addTo(map); renderVirgin(); }
+      else { virginLayer.clearLayers(); map.removeLayer(virginLayer); }
+    });
+  });
+
+  function fitAll() {
+    if (rects.length) map.fitBounds(L.featureGroup(rects).getBounds(), {padding: [30, 30]});
+  }
+  function fitInitial() {
+    if (theatres.length) map.fitBounds(theatres[0].bounds, {padding: [30, 30]});
+    else fitAll();
+  }
+  fitInitial();
+
+  document.querySelectorAll('.rb-jump[data-b]').forEach(function (b) {
+    b.addEventListener('click', function () { map.fitBounds(JSON.parse(b.dataset.b), {padding: [30, 30]}); });
+  });
+  var ja = document.getElementById('jump-all');
+  if (ja) ja.addEventListener('click', fitAll);
+
+  // Delegation statt Einzel-Handler: die Planer-Liste wird beim Live-Update ersetzt
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest) return;
+    if (e.target.closest('.tour-add')) return;  // + nicht mit fliegen
+    if (e.target.closest('.pl-chip') || e.target.closest('.pl-sort')) return;
+    var el = e.target.closest('.pl-item[data-lat]');
+    if (el) map.flyTo([parseFloat(el.dataset.lat), parseFloat(el.dataset.lng)], 12, {duration: 0.7});
+  });
+
+  // ---- Planer: Filter + Sortierung + Entfernung ----
+  // Getrennte Schritte, weil sie unterschiedlich teuer sind: Filtern schaltet nur
+  // `hidden` (billig), Sortieren baut die Liste um (teuer → nur wenn nötig, und in
+  // EINEM Rutsch per Fragment statt 180 Einzel-Moves).
+  var plFilter = {mode: 'all', gang: null};
+  var plSort = 'dist';
+  var plLastSortAt = 0;
+
+  // Fenstergröße: so viele Zeilen stehen im DOM. Der Rest bleibt im Speicher —
+  // ein grosses Revier kann tausende Zellen haben, die wuerden das Handy erwuergen.
+  var PL_PAGE = 60;
+  var plShown = PL_PAGE;
+  var plRef = null;      // Bezugspunkt der zuletzt berechneten Entfernungen
+
+  function plRef_() {
+    return myPos() || (map ? {lat: map.getCenter().lat, lng: map.getCenter().lng} : null);
+  }
+
+  // Alle Kandidaten als Daten: Gegner + frei (vom Server) und Neuland (alle Zellen).
+  function plCandidates() {
+    var out = targets.slice();
+    virginCells.forEach(function (v) {
+      out.push({t: 'virgin', lat: v.lat, lng: v.lng, my: 0, gap: 0});
+    });
+    return out;
+  }
+
+  function plMatch(c) {
+    var m = plFilter.mode;
+    return m === 'all'
+      || (m === 'ahead' && c.t === 'enemy' && c.gap === 0)
+      || (m === 'free' && c.t === 'free')
+      || (m === 'virgin' && c.t === 'virgin')
+      || (m === 'gang' && c.t === 'enemy' && c.g === plFilter.gang);
+  }
+
+  function plEffort(c) {
+    return c.t === 'free' ? 0 : c.t === 'virgin' ? 1 : (c.gap + 1);
+  }
+
+  function plRow(c, gps) {
+    var li = document.createElement('li');
+    li.className = 'pl-item' + (c.t === 'enemy' && c.gap === 0 ? ' pl-lead' : '');
+    li.dataset.lat = c.lat;
+    li.dataset.lng = c.lng;
+    var dist = (gps && c._d != null)
+      ? tf(T.km_away, {n: c._d < 10 ? c._d.toFixed(1) : Math.round(c._d)}) : '';
+    var label, dot, tag, line;
+    if (c.t === 'enemy') {
+      label = esc(c.g);
+      dot = '<span class="pl-dot"' + (c.c ? ' style="background:' + esc(c.c) + '"' : '') + '></span>';
+      tag = '<span class="pl-gap' + (c.gap === 0 ? ' lead' : '') + '">' +
+            (c.gap === 0 ? esc(T.lead) : esc(tf(T.gap_aps, {n: c.gap}))) + '</span>';
+      var pct = c.gap === 0 ? 100 : Math.round(100 * c.my / (c.cnt + 1));
+      line = '<div class="pl-bar"><i style="width:' + pct + '%"></i></div>' +
+             '<div class="pl-row2">' + tf(T.pl_vs, {my: c.my, cnt: c.cnt}) + '</div>';
+    } else if (c.t === 'free') {
+      label = '<span class="free-name">' + esc(T.free_tag) + '</span>';
+      dot = '<span class="pl-dot free"></span>';
+      tag = '<span class="pl-gap free">' + esc(T.free_grab) + '</span>';
+      line = '<div class="pl-row2">' + tf(T.free_line, {my: c.my}) + '</div>';
+    } else {
+      label = '<span class="virgin-name">' + esc(T.virgin_land) + '</span>';
+      dot = '<span class="pl-dot virgin"></span>';
+      tag = '<span class="pl-gap virgin">' + esc(T.virgin_tag) + '</span>';
+      line = '<div class="pl-row2">' + esc(T.virgin_line) + '</div>';
+    }
+    li.innerHTML =
+      '<div class="pl-main"><div class="pl-row1">' + dot +
+        '<span class="pl-gang">' + label + '</span>' +
+        '<span class="pl-dist">' + dist + '</span>' + tag +
+      '</div>' + line + '</div>' +
+      '<button type="button" class="tour-add" data-lat="' + c.lat + '" data-lng="' + c.lng +
+        '" data-label="' + esc(c.t === 'enemy' ? c.g : c.t === 'free' ? T.free_tag : T.virgin_land) +
+        '">+</button>';
+    return li;
+  }
+
+  // Filtern + sortieren laufen ueber ALLE Kandidaten (sonst waere "naechste zuerst"
+  // wieder nur die Sortierung einer Vorauswahl) — gerendert wird nur das Fenster.
+  function plRender() {
+    var list = document.getElementById('pl-list');
+    if (!list) return;
+    var gps = myPos();
+    var ref = plRef_();
+    plRef = ref;
+
+    var cand = plCandidates().filter(plMatch);
+    if (ref) {
+      cand.forEach(function (c) { c._d = hav(ref, {lat: c.lat, lng: c.lng}); });
+    }
+    var key = plSort === 'dist' ? function (c) { return c._d != null ? c._d : 1e9; }
+            : plSort === 'aps' ? function (c) { return -(c.my || 0); }
+            : plEffort;
+    cand.sort(function (a, b) { return key(a) - key(b); });
+
+    var page = cand.slice(0, plShown);
+    var frag = document.createDocumentFragment();
+    page.forEach(function (c) { frag.appendChild(plRow(c, gps)); });
+    list.innerHTML = '';
+    list.appendChild(frag);
+
+    var none = document.getElementById('pl-none');
+    if (none) none.hidden = cand.length > 0;
+    var more = document.getElementById('pl-more');
+    if (more) {
+      more.hidden = cand.length <= page.length;
+      var txt = document.getElementById('pl-more-txt');
+      if (txt) txt.textContent = tf(T.shown_of, {k: page.length, n: cand.length});
+    }
+    var chip = document.querySelector('.pl-chip.on b');
+    if (chip && plFilter.mode !== 'gang') chip.textContent = cand.length;
+    plLastSortAt = Date.now();
+    renderTour();   // "+"-Zustaende der frischen Zeilen setzen
+  }
+
+  function plRefresh() { plShown = PL_PAGE; plRender(); }
+
+  // Beim Fahren feuert das GPS im Sekundentakt. Neu bauen nur, wenn sich der
+  // Bezugspunkt spuerbar verschoben hat (>300 m) oder 10 s um sind — sonst springt
+  // die Liste einem unter dem Daumen weg. Der erste Fix greift sofort.
+  var plHadGps = false;
+  function plOnPosition() {
+    var ref = plRef_();
+    if (!ref) return;
+    if (!plHadGps) { plHadGps = true; plRender(); return; }
+    if (plSort !== 'dist') return;
+    var moved = plRef ? hav(plRef, ref) : 999;
+    if (moved > 0.3 && Date.now() - plLastSortAt > 10000) plRender();
+  }
+
+  document.addEventListener('click', function (e) {
+    var chip = e.target.closest ? e.target.closest('.pl-chip') : null;
+    if (chip) {
+      plFilter = {mode: chip.dataset.filter, gang: chip.dataset.gang || null};
+      document.querySelectorAll('.pl-chip').forEach(function (c) { c.classList.toggle('on', c === chip); });
+      plShown = PL_PAGE;
+      plRender();
+      return;
+    }
+    if (e.target.closest && e.target.closest('#pl-more-btn')) {
+      plShown += PL_PAGE;
+      plRender();
+    }
+  });
+  document.addEventListener('change', function (e) {
+    if (e.target && e.target.id === 'pl-sort') { plSort = e.target.value; plShown = PL_PAGE; plRender(); }
+  });
+
+  function showTab(name) {
+    document.querySelectorAll('.tab').forEach(function (x) { x.classList.toggle('active', x.dataset.tab === name); });
+    document.querySelectorAll('.tabc').forEach(function (c) { c.hidden = c.dataset.tabc !== name; });
+    map.invalidateSize();
+  }
+  document.querySelectorAll('.tab').forEach(function (t) {
+    t.addEventListener('click', function () { showTab(t.dataset.tab); });
+  });
+  if (initTab && initTab !== 'planer') showTab(initTab);
+
+  // ---- Follow-Mode: eigene Live-Position + „du bist hier"-Kontext ----
+  var meMarker = null, meCircle = null, follow = false, watchId = null;
+  var here = document.getElementById('here');
+  function updateHere(lat, lng) {
+    var c = cellAt(lat, lng);
+    here.hidden = false;
+    if (!c) {
+      // Kein Feed-Eintrag: entweder Neuland (nie gescannt → holen!) oder außerhalb
+      var k = Math.floor(lat / grid.lat + 1e-9) + '_' + Math.floor(lng / grid.lng + 1e-9);
+      if (virginByKey[k]) {
+        here.className = 'here-banner virgin';
+        here.innerHTML = T.here_virgin;
+      } else {
+        here.className = 'here-banner out'; here.innerHTML = T.here_out;
+      }
+      return;
+    }
+    if (c.status === 'mine') {
+      here.className = 'here-banner mine'; here.innerHTML = tf(T.here_mine, {n: (c.my_aps || 0)});
+    } else if (c.status === 'free') {
+      here.className = 'here-banner free'; here.innerHTML = tf(T.here_free, {n: (c.my_aps || 0)});
+    } else {
+      here.className = 'here-banner enemy';
+      here.innerHTML = c.gap === 0 ? tf(T.here_enemy_lead, {g: esc(c.gang)})
+                                   : tf(T.here_enemy_gap, {g: esc(c.gang), n: c.gap});
+    }
+  }
+  function onPos(p) {
+    var lat = p.coords.latitude, lng = p.coords.longitude, acc = p.coords.accuracy || 0, ll = [lat, lng];
+    if (!meMarker) {
+      meMarker = L.marker(ll, {icon: L.divIcon({className: 'me-dot', iconSize: [18, 18],
+        iconAnchor: [9, 9], html: '<span></span>'}), zIndexOffset: 1000}).addTo(map);
+      meCircle = L.circle(ll, {radius: acc, color: '#3b82f6', weight: 1, fillOpacity: 0.08}).addTo(map);
+    } else { meMarker.setLatLng(ll); meCircle.setLatLng(ll).setRadius(acc); }
+    if (follow) map.setView(ll, Math.max(map.getZoom(), 13));
+    updateHere(lat, lng);
+    maybePush(lat, lng);
+    navUpdate(lat, lng);
+    plOnPosition();  // Entfernungen mitziehen; Umsortieren nur gedrosselt
+  }
+  function onPosErr() { here.hidden = false; here.className = 'here-banner out'; here.innerHTML = T.no_gps; }
+  var LocateCtl = L.Control.extend({options: {position: 'topleft'}, onAdd: function () {
+    var d = L.DomUtil.create('div', 'leaflet-bar locate-ctl');
+    d.innerHTML = '<a href="#" id="loc-btn" title="Follow" role="button">◎</a>';
+    L.DomEvent.disableClickPropagation(d);
+    return d;
+  }});
+  map.addControl(new LocateCtl());
+  document.getElementById('loc-btn').addEventListener('click', function (e) {
+    e.preventDefault();
+    var btn = document.getElementById('loc-btn');
+    if (!navigator.geolocation) { onPosErr(); return; }
+    if (!watchId) {
+      watchId = navigator.geolocation.watchPosition(onPos, onPosErr,
+        {enableHighAccuracy: true, maximumAge: 5000, timeout: 15000});
+      follow = true; btn.classList.add('active');
+    } else {
+      follow = !follow; btn.classList.toggle('active', follow);
+      if (follow && meMarker) map.setView(meMarker.getLatLng(), Math.max(map.getZoom(), 13));
+    }
+    void btn.offsetWidth;  // iOS zeichnet Klassenwechsel an Leaflet-Controls sonst erst beim nächsten Reflow
+  });
+
+  // ---- Crew: Live-Positionen der Freunde (12s-Poll) + eigener Push beim Teilen ----
+  var friendLayer = L.layerGroup().addTo(map);
+  function loadFriends() {
+    fetch('/friends/positions.json', {headers: {'X-Requested-With': 'fetch'}})
+      .then(function (r) { return r.ok ? r.json() : {friends: []}; })
+      .then(function (d) {
+        friendLayer.clearLayers();
+        (d.friends || []).forEach(function (f) {
+          var ago = f.age_s < 60 ? T.friend_now : tf(T.friend_ago, {n: Math.round(f.age_s / 60)});
+          L.marker([f.lat, f.lng], {zIndexOffset: 800, icon: L.divIcon({className: 'friend-dot',
+            iconSize: [16, 16], iconAnchor: [8, 8], html: '<span></span>'})}).addTo(friendLayer)
+            .bindPopup('<b>' + esc(f.username) + '</b>' + (f.gang ? ' · ' + esc(f.gang) : '') + '<br>' + ago);
+        });
+        if (d.last_poll && String(d.last_poll) !== String(POLL_EPOCH)) applyLive();
+      }).catch(function () {});
+  }
+  loadFriends();
+  setInterval(loadFriends, 12000);
+
+  // ---- Live-Update ohne Neuladen ----
+  // Hat der Poller frischere Daten, patchen wir Karte, Zähler, Wächter und Planer
+  // in-place. Kein Reload (kein Blitzen, kein Zustandsverlust) — läuft deshalb auch
+  // während der Tour-Führung: gerade beim Angriff muss der Wächter durchkommen.
+  var applying = false;
+  function applyLive() {
+    if (applying) return;
+    applying = true;
+    fetch('/api/live', {headers: {'X-Requested-With': 'fetch'}})
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d) return;
+        POLL_EPOCH = d.poll;
+
+        var wb = document.getElementById('watcher-body');
+        if (wb && d.watcher_html != null) wb.innerHTML = d.watcher_html;
+        var badge = document.getElementById('watch-badge');
+        if (badge) { badge.textContent = d.events_n; badge.hidden = !d.events_n; }
+
+        if (d.virgin) { virginCells = expandVirgin(d.virgin); indexVirgin(); renderVirgin(); }
+        if (d.targets) targets = d.targets;
+
+        var pb = document.getElementById('planner-body');
+        if (pb && d.planner_html != null) {
+          pb.innerHTML = d.planner_html;   // nur Chips + Sortierfeld
+          // Filter/Sortierung des Nutzers nach dem Austausch wiederherstellen
+          var sel = document.getElementById('pl-sort');
+          if (sel) sel.value = plSort;
+          var known = false;
+          document.querySelectorAll('.pl-chip').forEach(function (c) {
+            var same = c.dataset.filter === plFilter.mode &&
+                       (c.dataset.gang || null) === plFilter.gang;
+            c.classList.toggle('on', same);
+            if (same) known = true;
+          });
+          // Gefilterte Gang kann verschwunden sein (Zelle geflippt) → zurück auf Alle
+          if (!known) {
+            plFilter = {mode: 'all', gang: null};
+            var all = document.querySelector('.pl-chip[data-filter="all"]');
+            if (all) all.classList.add('on');
+          }
+          plRender();   // plShown bleibt: wer "mehr" geklickt hat, behält seine Liste
+        }
+
+        if (d.counts) {
+          ['mine', 'enemy', 'free'].forEach(function (k) {
+            var el = document.querySelector('.rb.' + k + ' b');
+            if (el) el.textContent = d.counts[k];
+          });
+        }
+        // Zellen nur neu zeichnen, wenn kein Popup offen ist (das würde es schließen).
+        // Kartenblick/Zoom bleiben unangetastet — wir zeichnen nur den Layer neu.
+        if (d.cells && !document.querySelector('.leaflet-popup')) {
+          cells = d.cells;
+          renderCells();
+          var mp = myPos();
+          if (mp && !here.hidden) updateHere(mp.lat, mp.lng);
+        }
+      })
+      .catch(function () {})
+      .then(function () { applying = false; });
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') loadFriends();
+  });
+
+  var lastPush = 0;
+  function maybePush(lat, lng) {
+    if (!SHARING) return;
+    var now = Date.now();
+    if (now - lastPush < 12000) return;
+    lastPush = now;
+    fetch('/position', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'lat=' + encodeURIComponent(lat) + '&lng=' + encodeURIComponent(lng)}).catch(function () {});
+  }
+
+  // ---- Dashboard-Sparklines aus der Stats-Zeitreihe ----
+  (function () {
+    if (!HISTORY || HISTORY.length < 2) return;
+    var box = document.getElementById('charts');
+    if (!box) return;
+    function spark(vals, color, invert) {
+      var nums = vals.filter(function (v) { return v !== null && v !== undefined; });
+      if (nums.length < 2) return '';
+      var min = Math.min.apply(null, nums), max = Math.max.apply(null, nums), rng = (max - min) || 1;
+      var pts = vals.map(function (v, i) {
+        var norm = ((v == null ? min : v) - min) / rng; if (invert) norm = 1 - norm;
+        return ((i / (vals.length - 1)) * 100).toFixed(1) + ',' + (28 - norm * 26).toFixed(1);
+      });
+      return '<svg viewBox="0 0 100 30" preserveAspectRatio="none" class="spark"><polyline points="' +
+        pts.join(' ') + '" fill="none" stroke="' + color + '" stroke-width="1.5"/></svg>';
+    }
+    function row(label, val, svg) {
+      return '<div class="chart-row"><div class="chart-lbl">' + label + ' <b>' + val + '</b></div>' + svg + '</div>';
+    }
+    var last = HISTORY[HISTORY.length - 1], html = '';
+    html += row('{{ t("chart_total") }}', last.total != null ? last.total : '—',
+                spark(HISTORY.map(function (h) { return h.total; }), '#e8b64c', false));
+    html += row('{{ t("chart_rank") }}', last.gang_rank != null ? '#' + last.gang_rank : '—',
+                spark(HISTORY.map(function (h) { return h.gang_rank; }), '#8fa7bd', true));
+    html += row('{{ t("chart_cl") }}',
+                (last.team_captured != null ? last.team_captured : '—') + ' / ' + (last.team_lost != null ? last.team_lost : '—'),
+                spark(HISTORY.map(function (h) { return (h.team_captured || 0) - (h.team_lost || 0); }), '#d63b41', false));
+    box.innerHTML = html;
+  })();
+
+  // ---- Beute-Tour: Ziele wählen → Reihenfolge optimieren → führen ----
+  var tour = [];
+  try { tour = JSON.parse(localStorage.getItem('wr_tour') || '[]') || []; } catch (e) { tour = []; }
+  var tourOrdered = null;
+  var tourLayer = L.layerGroup().addTo(map);
+  var panel = document.getElementById('tour-panel');
+  var tourHint = document.getElementById('tour-hint');
+  var tourList = document.getElementById('tour-list');
+  var tourCount = document.getElementById('tour-count');
+  var mapsLink = document.getElementById('tour-maps');
+  var navBanner = document.getElementById('nav');
+  var guidanceOn = false, navIdx = 0;
+
+  // ---- Wegpunkte auf die Straße ziehen ----
+  // Der Zellmittelpunkt liegt oft im Wald/Acker/Fluss → Google baut daraus Routen
+  // ins Nirgendwo. Wir holen uns pro Zelle den nächsten Straßenpunkt (serverseitig
+  // aus OpenStreetMap, dauerhaft gecacht). Die Zell-Identität (lat/lng = Mittelpunkt)
+  // bleibt unangetastet — daran hängen "+"-Abgleich und die Auto-Weiterschaltung.
+  function cellOf(s) {
+    return [Math.floor(s.lat / grid.lat + 1e-9), Math.floor(s.lng / grid.lng + 1e-9)];
+  }
+  function stopPos(s) {
+    return (s.rlat != null) ? {lat: s.rlat, lng: s.rlng} : {lat: s.lat, lng: s.lng};
+  }
+  // Gebündelt: wer schnell mehrere Zellen antippt, löst EINE Anfrage aus statt fünf.
+  // Zellen, die der Server nicht beantworten konnte (Overpass gerade weg), bleiben
+  // offen und werden erneut versucht — sie dürfen NICHT als "keine Straße" gelten.
+  var snapT = null, snapTries = 0;
+  function snapTour() {
+    if (snapT) clearTimeout(snapT);
+    snapTries = 0;
+    snapT = setTimeout(doSnap, 600);
+  }
+  function doSnap() {
+    var need = tour.filter(function (s) { return s.rlat === undefined; });
+    if (!need.length) return;
+    fetch('/api/snap', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({cells: need.map(cellOf)})})
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (d && d.points) {
+          tour.forEach(function (s) {
+            var c = cellOf(s), k = c[0] + '_' + c[1];
+            if (!(k in d.points)) return;        // unbeantwortet → offen lassen
+            var p = d.points[k];
+            if (p) { s.rlat = p[0]; s.rlng = p[1]; s.noRoad = false; }
+            else { s.rlat = null; s.rlng = null; s.noRoad = true; }
+          });
+          saveTour();
+          renderTour();
+          if (tourOrdered) drawRoute();
+        }
+        // Noch offene Zellen? Später nochmal — Overpass ist manchmal kurz weg.
+        var open = tour.some(function (s) { return s.rlat === undefined; });
+        if (open && snapTries < 3) {
+          snapTries++;
+          if (snapT) clearTimeout(snapT);
+          snapT = setTimeout(doSnap, 6000 * snapTries);
+        }
+      })
+      .catch(function () {
+        if (snapTries < 3) {
+          snapTries++;
+          if (snapT) clearTimeout(snapT);
+          snapT = setTimeout(doSnap, 6000 * snapTries);
+        }
+      });
+  }
+
+  function tKey(lat, lng) { return (+lat).toFixed(4) + ',' + (+lng).toFixed(4); }
+  function inTour(lat, lng) { var k = tKey(lat, lng); return tour.some(function (s) { return tKey(s.lat, s.lng) === k; }); }
+  function saveTour() { try { localStorage.setItem('wr_tour', JSON.stringify(tour)); } catch (e) {} }
+  function hav(a, b) {
+    var R = 6371, dLa = (b.lat - a.lat) * Math.PI / 180, dLo = (b.lng - a.lng) * Math.PI / 180;
+    var s = Math.sin(dLa / 2) * Math.sin(dLa / 2) + Math.cos(a.lat * Math.PI / 180) *
+      Math.cos(b.lat * Math.PI / 180) * Math.sin(dLo / 2) * Math.sin(dLo / 2);
+    return 2 * R * Math.asin(Math.sqrt(s));
+  }
+  function bearing(a, b) {
+    var y = Math.sin((b.lng - a.lng) * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180);
+    var x = Math.cos(a.lat * Math.PI / 180) * Math.sin(b.lat * Math.PI / 180) - Math.sin(a.lat * Math.PI / 180) *
+      Math.cos(b.lat * Math.PI / 180) * Math.cos((b.lng - a.lng) * Math.PI / 180);
+    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+  }
+  function myPos() {
+    // Ohne GPS-Marker gibt es keine eigene Position. (Hier stand eine nie definierte
+    // Variable `own` → ReferenceError, der ohne GPS u.a. die Tour-Optimierung riss.)
+    if (meMarker) { var ll = meMarker.getLatLng(); return {lat: ll.lat, lng: ll.lng}; }
+    return null;
+  }
+  function cellKeyOf(lat, lng) { return Math.floor(lat / grid.lat + 1e-9) + '_' + Math.floor(lng / grid.lng + 1e-9); }
+
+  function toggleTour(lat, lng, label) {
+    lat = +lat; lng = +lng;
+    var k = tKey(lat, lng), i = -1;
+    tour.forEach(function (s, idx) { if (tKey(s.lat, s.lng) === k) i = idx; });
+    var before = tour.length;
+    if (i >= 0) tour.splice(i, 1); else tour.push({lat: lat, lng: lng, label: label || ''});
+    // Genau beim Überschreiten der Google-Grenze einmal Bescheid geben
+    if (tour.length > MAPS_MAX && before <= MAPS_MAX) {
+      toast('<b>' + esc(tf(T.maps_cap, {max: MAPS_MAX})) + '</b><br>' +
+            esc(tf(T.maps_cap_toast, {max: MAPS_MAX, n: tour.length})), 6500, true);
+    }
+    tourOrdered = null; stopGuidance(); tourLayer.clearLayers(); saveTour(); renderTour();
+    snapTour();
+  }
+
+  function optimize() {
+    if (!tour.length) return;
+    var start = myPos() || stopPos(tour[0]), pts = tour.slice(), order = [], cur = start;
+    while (pts.length) {
+      var bi = 0, bd = Infinity;
+      for (var i = 0; i < pts.length; i++) {
+        var d = hav(cur, stopPos(pts[i]));
+        if (d < bd) { bd = d; bi = i; }
+      }
+      cur = stopPos(pts[bi]); order.push(pts[bi]); pts.splice(bi, 1);
+    }
+    function len(o) {
+      var d = hav(start, stopPos(o[0]));
+      for (var i = 1; i < o.length; i++) d += hav(stopPos(o[i - 1]), stopPos(o[i]));
+      return d;
+    }
+    var improved = true, guard = 0;
+    while (improved && guard++ < 80) {
+      improved = false;
+      for (var a = 0; a < order.length - 1; a++)
+        for (var b = a + 1; b < order.length; b++) {
+          var no = order.slice(0, a).concat(order.slice(a, b + 1).reverse(), order.slice(b + 1));
+          if (len(no) + 1e-9 < len(order)) { order = no; improved = true; }
+        }
+    }
+    tour = order; tourOrdered = order; saveTour(); drawRoute(); renderTour();
+  }
+
+  function totalKm() {
+    if (!tourOrdered || !tourOrdered.length) return null;
+    var start = myPos(), prev = start || stopPos(tourOrdered[0]), d = 0, i = start ? 0 : 1;
+    for (; i < tourOrdered.length; i++) {
+      var p = stopPos(tourOrdered[i]);
+      d += hav(prev, p);
+      prev = p;
+    }
+    return d;
+  }
+
+  function drawRoute() {
+    tourLayer.clearLayers();
+    if (!tourOrdered || !tourOrdered.length) return;
+    var start = myPos();
+    var lls = (start ? [[start.lat, start.lng]] : []).concat(
+      tourOrdered.map(function (s) { var p = stopPos(s); return [p.lat, p.lng]; }));
+    L.polyline(lls, {color: '#e8b64c', weight: 3, opacity: 0.85, dashArray: '6 6', interactive: false}).addTo(tourLayer);
+    tourOrdered.forEach(function (s, i) {
+      var p = stopPos(s);
+      L.marker([p.lat, p.lng], {zIndexOffset: 700, interactive: false, icon: L.divIcon({className: 'tour-num',
+        iconSize: [22, 22], iconAnchor: [11, 11], html: '<span>' + (i + 1) + '</span>'})}).addTo(tourLayer);
+    });
+  }
+
+  // Google Maps nimmt maximal 9 Wegpunkte + 1 Ziel = 10 Stopps. Alles darüber
+  // wurde bisher STILL abgeschnitten — jetzt sagen wir es.
+  var MAPS_MAX = 10;
+  function mapsUrl() {
+    var stops = (tourOrdered || tour).slice(0, MAPS_MAX);
+    if (!stops.length) return '#';
+    // Straßenpunkte statt Zellmittelpunkte — sonst schickt Google einen in den Acker
+    var ll = stops.map(stopPos);
+    var dest = ll[ll.length - 1], wps = ll.slice(0, -1);
+    var u = 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' +
+            dest.lat + ',' + dest.lng;
+    if (wps.length) u += '&waypoints=' + wps.map(function (s) { return s.lat + ',' + s.lng; }).join('|');
+    return u;
+  }
+
+  // ---- Kurzmeldung über der Karte, angekündigt vom Herold ----
+  // Der Warlord springt aus der Kartenmitte, hält kurz drohend inne und fliegt
+  // schrumpfend in die Meldung, wo er als Siegel sitzen bleibt.
+  var toastEl = document.getElementById('toast');
+  var toastTxt = document.getElementById('toast-txt');
+  var toastApe = document.getElementById('toast-ape');
+  var toastT = null, heraldT = [];
+  var REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---- Zum Ort des Geschehens springen (Klick auf einen Wächter-Bericht) ----
+  // Karte fliegt zur Zelle, der Warlord schlägt dort ein und verpufft — wie ein
+  // „HIER!"-Zeigefinger auf den Tatort.
+  function apeStrike() {
+    var stage = document.querySelector('.stage');
+    if (!stage || REDUCED) return;
+    var sr = stage.getBoundingClientRect();
+    var SIZE = Math.min(180, Math.round(Math.min(sr.width, sr.height) * 0.5));
+    var burst = document.createElement('div');
+    burst.className = 'ape-burst strike';
+    burst.innerHTML = '<span class="ape-ring"></span>' +
+                      '<img src="/static/img/ape-herald.webp" alt="">';
+    burst.style.width = burst.style.height = SIZE + 'px';
+    burst.style.left = Math.round(sr.width / 2 - SIZE / 2) + 'px';
+    burst.style.top = Math.round(sr.height / 2 - SIZE / 2) + 'px';
+    stage.appendChild(burst);
+    burst.classList.add('pop');
+    setTimeout(function () {
+      burst.classList.add('vanish');
+      setTimeout(function () { if (burst.parentNode) burst.parentNode.removeChild(burst); }, 480);
+    }, 950);
+  }
+
+  var strikePending = false;
+  function jumpToEvent(lat, lng) {
+    strikePending = true;
+    function fire() { if (!strikePending) return; strikePending = false; apeStrike(); }
+    map.once('moveend', fire);
+    setTimeout(fire, 1100);   // Fallback, falls die Karte kaum bewegt (moveend bleibt aus)
+    map.flyTo([lat, lng], Math.max(map.getZoom(), 13), {duration: 0.8});
+  }
+
+  document.addEventListener('click', function (e) {
+    var ev = e.target.closest ? e.target.closest('.ev[data-lat]') : null;
+    if (!ev) return;
+    jumpToEvent(parseFloat(ev.dataset.lat), parseFloat(ev.dataset.lng));
+  });
+
+  function hideToast() {
+    toastEl.classList.remove('on');
+    setTimeout(function () { toastEl.hidden = true; }, 300);
+  }
+
+  function toast(html, ms, herald) {
+    if (!toastEl) return;
+    heraldT.forEach(clearTimeout); heraldT = [];
+    if (toastT) clearTimeout(toastT);
+    toastTxt.innerHTML = html;
+    var life = ms || 5000;
+
+    if (!herald || REDUCED || !document.querySelector('.stage')) {
+      toastApe.classList.toggle('on', !!herald);
+      toastEl.hidden = false;
+      requestAnimationFrame(function () { toastEl.classList.add('on'); });
+      toastT = setTimeout(hideToast, life);
+      return;
+    }
+
+    // 1) Herold knallt aus der Mitte — Meldung liegt schon da, nur unsichtbar,
+    //    damit wir den Zielplatz des Siegels ausmessen können.
+    toastApe.classList.remove('on');
+    toastEl.hidden = false;
+    toastEl.classList.remove('on');
+    toastEl.classList.add('pre');
+
+    var stage = document.querySelector('.stage');
+    var burst = document.createElement('div');
+    burst.className = 'ape-burst';
+    burst.innerHTML = '<span class="ape-ring"></span>' +
+                      '<img src="/static/img/ape-herald.webp" alt="">';
+    stage.appendChild(burst);
+
+    var sr = stage.getBoundingClientRect();
+    var SIZE = Math.min(200, Math.round(Math.min(sr.width, sr.height) * 0.52));
+    burst.style.width = burst.style.height = SIZE + 'px';
+    burst.style.left = Math.round(sr.width / 2 - SIZE / 2) + 'px';
+    burst.style.top = Math.round(sr.height * 0.44 - SIZE / 2) + 'px';
+    burst.classList.add('pop');
+
+    // 2) …hält inne, dann fliegt er ins Siegel-Feld der Meldung.
+    heraldT.push(setTimeout(function () {
+      var br = burst.getBoundingClientRect();
+      var tr = toastApe.getBoundingClientRect();
+      var dx = (tr.left + tr.width / 2) - (br.left + br.width / 2);
+      var dy = (tr.top + tr.height / 2) - (br.top + br.height / 2);
+      var sc = tr.width / SIZE;
+      burst.classList.remove('pop');
+      burst.classList.add('fly');
+      var anim = burst.animate([
+        {transform: 'translate(0,0) scale(1) rotate(0deg)', opacity: 1},
+        {transform: 'translate(' + dx + 'px,' + dy + 'px) scale(' + sc + ') rotate(-12deg)',
+         opacity: 1}
+      ], {duration: 480, easing: 'cubic-bezier(.55,-0.2,.35,1.2)', fill: 'forwards'});
+      toastEl.classList.remove('pre');
+      requestAnimationFrame(function () { toastEl.classList.add('on'); });
+      anim.onfinish = function () {
+        toastApe.classList.add('on');
+        if (burst.parentNode) burst.parentNode.removeChild(burst);
+      };
+    }, 820));
+
+    toastT = setTimeout(hideToast, life + 1300);
+  }
+
+  // Gewählte Zellen pulsieren auf der Karte — sofort beim Antippen, nicht erst nach
+  // dem Optimieren. Eigene Ebene mit einem Rahmen je Stopp: funktioniert damit auch
+  // für Neuland (dessen Zell-Rechtecke sind nicht gezeichnet, solange der Layer aus ist).
+  map.createPane('picks');
+  map.getPane('picks').style.zIndex = 450;
+  var pickLayer = L.layerGroup().addTo(map);
+  function markTourCells() {
+    pickLayer.clearLayers();
+    if (!tour || !tour.length) return;
+    tour.forEach(function (t) {
+      var i = Math.floor(t.lat / grid.lat + 1e-9), j = Math.floor(t.lng / grid.lng + 1e-9);
+      var r = L.rectangle([[i * grid.lat, j * grid.lng],
+                           [(i + 1) * grid.lat, (j + 1) * grid.lng]],
+        {pane: 'picks', color: '#ffd15e', weight: 2, fill: false, interactive: false});
+      r.addTo(pickLayer);
+      var el = r.getElement();
+      if (el) el.classList.add('cell-picked');
+    });
+  }
+
+  function renderTour() {
+    var n = tour.length;
+    panel.hidden = n === 0; tourHint.hidden = n !== 0;
+    document.querySelectorAll('.tour-add').forEach(function (b) {
+      var on = inTour(b.dataset.lat, b.dataset.lng);
+      b.classList.toggle('on', on); b.textContent = on ? '✓' : '+';
+    });
+    markTourCells();
+    var warn = document.getElementById('tour-warn');
+    if (warn) {
+      // Dauerhinweis, solange die Tour über der Google-Grenze liegt
+      warn.hidden = n <= MAPS_MAX;
+      if (n > MAPS_MAX) {
+        warn.innerHTML = '⚠ <b>' + esc(tf(T.maps_cap, {max: MAPS_MAX})) + '</b> — ' +
+                         tf(T.maps_cap_note, {n: n, max: MAPS_MAX});
+      }
+    }
+    if (!n) { tourLayer.clearLayers(); return; }
+    var km = totalKm();
+    tourCount.textContent = km != null ? tf(T.tour_total, {n: n, km: km.toFixed(1)}) : tf(T.tour_one, {n: n});
+    tourList.innerHTML = tour.map(function (s, i) {
+      return '<li' + (tourOrdered && i >= MAPS_MAX ? ' class="over-cap"' : '') + '>' +
+        (tourOrdered ? '<b>' + (i + 1) + '.</b> ' : '') +
+        esc(s.label || (s.lat.toFixed(3) + ',' + s.lng.toFixed(3))) +
+        (s.noRoad ? ' <span class="no-road" title="' + esc(T.no_road) + '">⚑</span>' : '') +
+        '<button type="button" class="tour-del" data-lat="' + s.lat + '" data-lng="' + s.lng + '">✕</button></li>';
+    }).join('');
+    mapsLink.href = mapsUrl();
+  }
+
+  function stopGuidance() {
+    guidanceOn = false; navBanner.hidden = true;
+    var g = document.getElementById('tour-go'); if (g) g.textContent = '{{ t("tour_go") }}';
+    var h = document.getElementById('map-hero'); if (h) h.style.visibility = '';
+  }
+  function startGuidance() {
+    if (!tourOrdered || !tourOrdered.length) optimize();
+    if (!tourOrdered || !tourOrdered.length) return;
+    guidanceOn = true; navIdx = 0;
+    var h = document.getElementById('map-hero'); if (h) h.style.visibility = 'hidden';
+    document.getElementById('tour-go').textContent = '{{ t("tour_stop_nav") }}';
+    if (!watchId && navigator.geolocation) {
+      watchId = navigator.geolocation.watchPosition(onPos, onPosErr, {enableHighAccuracy: true, maximumAge: 5000, timeout: 15000});
+      follow = true;
+    }
+    var mp = myPos(); if (mp) navUpdate(mp.lat, mp.lng);
+    else { navBanner.hidden = false; navBanner.className = 'nav-banner'; navBanner.innerHTML = tf(T.nav_to, {k: 1, n: tourOrdered.length, km: '…'}); }
+  }
+  function navUpdate(lat, lng) {
+    if (!guidanceOn || !tourOrdered) return;
+    while (navIdx < tourOrdered.length &&
+           cellKeyOf(lat, lng) === cellKeyOf(tourOrdered[navIdx].lat, tourOrdered[navIdx].lng)) navIdx++;
+    if (navIdx >= tourOrdered.length) {
+      navBanner.hidden = false; navBanner.className = 'nav-banner done';
+      navBanner.innerHTML = tf(T.nav_done, {n: tourOrdered.length});
+      stopGuidance(); return;
+    }
+    // Pfeil und Entfernung zeigen auf den Straßenpunkt; die Auto-Weiterschaltung
+    // oben vergleicht weiter Zell-Schlüssel (Mittelpunkt) — das bleibt korrekt.
+    var tgt = stopPos(tourOrdered[navIdx]), here = {lat: lat, lng: lng};
+    navBanner.hidden = false; navBanner.className = 'nav-banner';
+    navBanner.innerHTML = '<span class="nav-arrow" style="transform:rotate(' + bearing(here, tgt).toFixed(0) + 'deg)">↑</span> ' +
+      tf(T.nav_to, {k: navIdx + 1, n: tourOrdered.length, km: hav(here, tgt).toFixed(1)});
+  }
+
+  document.addEventListener('click', function (e) {
+    var add = e.target.closest ? e.target.closest('.tour-add') : null;
+    if (add) { e.preventDefault(); toggleTour(add.dataset.lat, add.dataset.lng, add.dataset.label); return; }
+    var del = e.target.closest ? e.target.closest('.tour-del') : null;
+    if (del) { e.preventDefault(); toggleTour(del.dataset.lat, del.dataset.lng); return; }
+    var pin = e.target.closest ? e.target.closest('.cell-tour') : null;
+    if (pin) { e.preventDefault(); toggleTour(pin.dataset.lat, pin.dataset.lng, pin.dataset.label); map.closePopup(); }
+  });
+  document.getElementById('tour-optimize').addEventListener('click', optimize);
+  document.getElementById('tour-clear').addEventListener('click', function () {
+    tour = []; tourOrdered = null; stopGuidance(); tourLayer.clearLayers(); saveTour(); renderTour();
+  });
+  document.getElementById('tour-go').addEventListener('click', function () {
+    if (guidanceOn) stopGuidance(); else startGuidance();
+  });
+  renderTour();
+  snapTour();   // gespeicherte Tour aus einer alten Sitzung nachträglich snappen
+  plRefresh();
+
+  // ---- Rabenpost: Web-Push An/Aus für dieses Gerät ----
+  (function () {
+    var box = document.getElementById('push-box');
+    if (!box || !('serviceWorker' in navigator) || !('PushManager' in window) ||
+        !('Notification' in window)) return;
+    box.hidden = false;
+    var stat = document.getElementById('push-status');
+    var btn = document.getElementById('push-toggle');
+    var sub = null;
+    function ui() {
+      stat.textContent = sub ? T.push_on : T.push_off;
+      btn.textContent = sub ? T.push_disable : T.push_enable;
+      box.classList.toggle('on', !!sub);
+    }
+    navigator.serviceWorker.ready.then(function (reg) {
+      return reg.pushManager.getSubscription();
+    }).then(function (s) { sub = s; ui(); }).catch(function () {});
+    function b64ToU8(s) {
+      var pad = '='.repeat((4 - s.length % 4) % 4);
+      var raw = atob((s + pad).replace(/-/g, '+').replace(/_/g, '/'));
+      var arr = new Uint8Array(raw.length);
+      for (var i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+      return arr;
+    }
+    btn.addEventListener('click', function () {
+      if (sub) {
+        var ep = sub.endpoint;
+        sub.unsubscribe().catch(function () {});
+        fetch('/push/unsubscribe', {method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({endpoint: ep})}).catch(function () {});
+        sub = null; ui();
+        return;
+      }
+      btn.disabled = true;
+      stat.textContent = T.push_working;
+      // Nie wieder still haengen: jede Stufe bekommt eine Frist, sonst sagt das UI warum.
+      function withTimeout(p, ms, what) {
+        return Promise.race([p, new Promise(function (_, rej) {
+          setTimeout(function () { rej(new Error(what)); }, ms);
+        })]);
+      }
+      Notification.requestPermission().then(function (perm) {
+        if (perm !== 'granted') { btn.disabled = false; stat.textContent = T.push_denied; return; }
+        return Promise.all([withTimeout(navigator.serviceWorker.ready, 8000, 'service worker'),
+                            fetch('/push/pubkey').then(function (r) { return r.json(); })])
+          .then(function (rs) {
+            // Ein evtl. verwaistes Abo (Server kennt es nicht mehr) erst aufräumen
+            return withTimeout(rs[0].pushManager.getSubscription().then(function (old) {
+              if (old) return old;
+              return rs[0].pushManager.subscribe({userVisibleOnly: true,
+                applicationServerKey: b64ToU8(rs[1].key)});
+            }), 15000, 'subscribe');
+          })
+          .then(function (s) {
+            sub = s;
+            return fetch('/push/subscribe', {method: 'POST',
+              headers: {'Content-Type': 'application/json'}, body: JSON.stringify(s.toJSON())})
+              .then(function (r) {
+                if (!r.ok) throw new Error('subscribe ' + r.status);
+                btn.disabled = false; ui();
+              });
+          })
+          .catch(function (err) {
+            btn.disabled = false; sub = null; ui();
+            stat.textContent = (err && err.message) ? (T.push_failed + ' (' + err.message + ')')
+                                                    : T.push_failed;
+          });
+      }).catch(function () { btn.disabled = false; stat.textContent = T.push_denied; });
+    });
+  })();
+
+  // Mobile: Leaflet initialisiert oft bevor das Flex-Layout die echte Kartengröße
+  // hat → Karte bleibt leer/falsch, bis man manuell nachlädt. invalidateSize +
+  // neu einpassen, sobald das Layout steht (mehrfach, bis window.load).
+  // Beim ersten Aufbau steht die Karte noch auf der Startansicht (Atlantik) — die
+  // Entfernungen müssen deshalb nachgezogen werden, sobald sie aufs Revier passt.
+  function relayout() { map.invalidateSize(); fitInitial(); plRefresh(); }
+  setTimeout(relayout, 250);
+  setTimeout(relayout, 900);
+  window.addEventListener('load', relayout);
+  window.addEventListener('resize', function () { map.invalidateSize(); });
+});
+</script>
+{% endblock %}
