@@ -66,6 +66,16 @@
     <div class="toast-txt" id="toast-txt"></div>
   </div>
   <div id="here" class="here-banner" hidden></div>
+  <div id="loc-cross" class="loc-cross" hidden aria-hidden="true">
+    <svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 1v10M20 29v10M1 20h10M29 20h10" stroke="currentColor" stroke-width="2"/></svg>
+  </div>
+  <div id="loc-setbar" class="loc-setbar" hidden>
+    <span class="loc-hint">{{ t('loc_drag_hint') }}</span>
+    <div class="loc-actions">
+      <button type="button" id="loc-cancel" class="rb-jump stop">{{ t('loc_cancel') }}</button>
+      <button type="button" id="loc-confirm" class="rb-jump">{{ t('loc_set') }}</button>
+    </div>
+  </div>
 </div>
 
 <div class="panel">
@@ -306,10 +316,39 @@ document.addEventListener('DOMContentLoaded', function () {
     chip.addEventListener('click', function () {
       virginOn = !virginOn;
       chip.classList.toggle('on', virginOn);
-      if (virginOn) { virginLayer.addTo(map); renderVirgin(); }
+      if (virginOn) { virginLayer.addTo(map); renderVirgin(); snapVirginWater(); }
       else { virginLayer.clearLayers(); map.removeLayer(virginLayer); }
     });
   });
+  // Virgin cells sit purely on geometry, so some land in lakes/rivers (Lake Erie).
+  // When the layer is shown, snap the nearest ones to a road via /api/snap; cells with
+  // no drivable road (water/forest) come back null → drop them. Bounded to the nearest
+  // ~120 to keep Overpass light; results cache server-side so they stay hidden next load.
+  var virginSnapped = false;
+  function snapVirginWater() {
+    if (virginSnapped || !virginCells.length) return;
+    virginSnapped = true;
+    var near = virginCells.slice(0, 120), batches = [];
+    for (var i = 0; i < near.length; i += 40) batches.push(near.slice(i, i + 40));
+    var water = {};
+    (function run(bi) {
+      if (bi >= batches.length) return;
+      fetch('/api/snap', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({cells: batches[bi].map(function (v) { return [v.i, v.j]; })})})
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          if (d && d.points) {
+            Object.keys(d.points).forEach(function (k) { if (d.points[k] === null) water[k] = 1; });
+            if (Object.keys(water).length) {
+              virginCells = virginCells.filter(function (v) { return !water[v.i + '_' + v.j]; });
+              indexVirgin(); if (virginOn) renderVirgin();
+            }
+          }
+          run(bi + 1);
+        })
+        .catch(function () { run(bi + 1); });
+    })(0);
+  }
 
   function fitAll() {
     if (rects.length) map.fitBounds(L.featureGroup(rects).getBounds(), {padding: [30, 30]});
@@ -567,6 +606,49 @@ document.addEventListener('DOMContentLoaded', function () {
     void btn.offsetWidth;  // otherwise iOS paints class changes on Leaflet controls only on the next reflow
   });
 
+  // ---- Manual location: drag the map under the centre crosshair, confirm ----
+  // For planning from the couch or when GPS is off/indoors. Sets the same meMarker
+  // that GPS would, so the here-banner, planner distances and tour guidance all use it.
+  var SetLocCtl = L.Control.extend({options: {position: 'topleft'}, onAdd: function () {
+    var d = L.DomUtil.create('div', 'leaflet-bar locate-ctl');
+    d.innerHTML = '<a href="#" id="setloc-btn" title="' + esc(T.loc_set_title) + '" role="button">⌖</a>';
+    L.DomEvent.disableClickPropagation(d);
+    return d;
+  }});
+  map.addControl(new SetLocCtl());
+  function locModeShow(on) {
+    document.getElementById('loc-cross').hidden = !on;
+    document.getElementById('loc-setbar').hidden = !on;
+    var hero = document.getElementById('map-hero');
+    if (hero) hero.style.visibility = on ? 'hidden' : (guidanceOn ? 'hidden' : '');
+    var b = document.getElementById('setloc-btn'); if (b) b.classList.toggle('active', on);
+  }
+  function setManualPos(lat, lng) {
+    if (watchId) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+    follow = false;
+    var lb = document.getElementById('loc-btn'); if (lb) lb.classList.remove('active');
+    var ll = [lat, lng];
+    if (!meMarker) {
+      meMarker = L.marker(ll, {icon: L.divIcon({className: 'me-dot manual', iconSize: [18, 18],
+        iconAnchor: [9, 9], html: '<span></span>'}), zIndexOffset: 1000}).addTo(map);
+    } else { meMarker.setLatLng(ll); }
+    if (meCircle) { map.removeLayer(meCircle); meCircle = null; }  // no accuracy circle for a manual pin
+    updateHere(lat, lng);
+    navUpdate(lat, lng);
+    plOnPosition();
+  }
+  document.getElementById('setloc-btn').addEventListener('click', function (e) {
+    e.preventDefault();
+    if (meMarker) map.setView(meMarker.getLatLng(), Math.max(map.getZoom(), 12));
+    locModeShow(true);
+  });
+  document.getElementById('loc-cancel').addEventListener('click', function () { locModeShow(false); });
+  document.getElementById('loc-confirm').addEventListener('click', function () {
+    var c = map.getCenter();
+    setManualPos(c.lat, c.lng);
+    locModeShow(false);
+  });
+
   // ---- Crew: friends' live positions (12s poll) + own push while sharing ----
   var friendLayer = L.layerGroup().addTo(map);
   function loadFriends() {
@@ -608,7 +690,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var badge = document.getElementById('watch-badge');
         if (badge) { badge.textContent = d.events_n; badge.hidden = !d.events_n; }
 
-        if (d.virgin) { virginCells = expandVirgin(d.virgin); indexVirgin(); renderVirgin(); }
+        if (d.virgin) { virginCells = expandVirgin(d.virgin); indexVirgin(); renderVirgin(); virginSnapped = false; if (virginOn) snapVirginWater(); }
         if (d.targets) targets = d.targets;
 
         var pb = document.getElementById('planner-body');

@@ -138,8 +138,13 @@ def virgin_cells(conn, uid: int, limit: int | None = None) -> list[int]:
     There can be thousands of these; lat/lng are computable from the grid, so they
     don't need to go over the wire (saves ~80 % payload for a large turf).
     Sorted by proximity to the nearest own theatre."""
+    # Exclude cells already known to have no drivable road (found=0 in the road cache)
+    # — those sit in water/forest (the Lake Erie problem) and are pointless to raid.
+    # Unknown cells (not yet snapped) stay in until the client snaps them.
     rows = conn.execute(
-        "SELECT i, j, lat, lng FROM virgin_cells WHERE user_id = ?", (uid,)).fetchall()
+        """SELECT v.i, v.j, v.lat, v.lng FROM virgin_cells v
+           LEFT JOIN cell_roads r ON r.cell_key = v.cell_key
+           WHERE v.user_id = ? AND (r.found IS NULL OR r.found = 1)""", (uid,)).fetchall()
     cells = [(r["i"], r["j"], r["lat"], r["lng"]) for r in rows]
     centers = _theatre_centers(conn, uid)
     if centers:

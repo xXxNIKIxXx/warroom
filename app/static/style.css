@@ -320,6 +320,27 @@ path.cell-picked {
 .locate-ctl a { font-size: 1.1rem; text-align: center; }
 .locate-ctl a.active { background: var(--gold) !important; color: #191204 !important; }
 
+/* Manual location: gold pin instead of the blue GPS dot */
+.me-dot.manual span { background: var(--gold-bright); border-color: #191204; animation: none; }
+
+/* Manual-location mode: centre crosshair + confirm bar */
+.loc-cross {
+  position: absolute; left: 50%; top: 50%; width: 40px; height: 40px;
+  transform: translate(-50%, -50%); z-index: 530; pointer-events: none;
+  color: var(--gold-bright); filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.8));
+}
+.loc-cross svg { width: 100%; height: 100%; }
+.loc-setbar {
+  position: absolute; left: 50%; bottom: 0.7rem; transform: translateX(-50%); z-index: 531;
+  max-width: 94%; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+  justify-content: center; padding: 0.5rem 0.8rem; background: rgba(13, 18, 26, 0.92);
+  border: 1px solid var(--gold-dim); backdrop-filter: blur(4px);
+}
+.loc-setbar[hidden] { display: none; }  /* explicit display:flex above beats [hidden]{display:none} */
+.loc-setbar .loc-hint { color: var(--text); font-size: 0.82rem; }
+.loc-setbar .loc-actions { display: flex; gap: 0.4rem; }
+.locate-ctl a#setloc-btn.active { background: var(--gold) !important; color: #191204 !important; }
+
 /* Crew dots */
 .friend-dot span {
   display: block; width: 14px; height: 14px; border-radius: 50%;
