@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{% block title %}Warroom{% endblock %}</title>
 <meta name="theme-color" content="#07090d">
+<meta name="color-scheme" content="dark">
+{# Warroom is already a hand-built dark theme. Tell Dark Reader (and similar) to keep
+   its hands off — otherwise it inverts our already-inverted map tiles to solid black,
+   which reads as "the app won't load". #}
+<meta name="darkreader-lock">
 <link rel="manifest" href="/static/manifest.webmanifest?v={{ asset_v }}">
 <link rel="icon" href="/static/icon-raider.png">
 <link rel="apple-touch-icon" href="/static/icon-raider.png">
