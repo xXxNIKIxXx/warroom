@@ -77,7 +77,16 @@ class Wdg:
     def bounties(self) -> dict:
         return self._get("/api/bounties")
 
+    def me_cells(self) -> dict:
+        """Per-cell AP counts for the key owner — server-aggregated, uncapped, and
+        already the exact number the ownership engine uses (BLE/filtered scans
+        excluded). Same 0.02 grid as member-territories; lat/lng = SW corner.
+        This is what we build the footprint from — no raw AP list needed."""
+        return self._get("/api/me/cells")
+
     def my_aps(self, since: str | None = None, limit: int = 500000) -> dict:
+        """Raw AP list (capped at 500k server-side). Superseded by me_cells() for
+        the footprint; kept as a thin wrapper in case raw scans are ever needed."""
         q = f"/api/me/aps?limit={limit}"
         if since:
             q += f"&since={urllib.parse.quote(since)}"

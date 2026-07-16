@@ -27,45 +27,24 @@ def _num(x):
 
 
 def refresh_footprint(conn, client: Wdg, user_id: int, glat: float, glng: float) -> int:
-    data = client.my_aps()
-    aps = data.get("aps", [])
-    truncated = bool(data.get("truncated"))
-    counts: dict[str, list] = {}
-    for a in aps:
-        if a.get("type") != "WIFI":  # only WiFi counts for turf; BLE just fills the 500k window
-            continue
-        la, lo = a.get("lat"), a.get("lng")
-        if la is None or lo is None:
+    """Build the player's footprint from /api/me/cells: server-aggregated per-cell AP
+    counts, uncapped, already the exact ownership-engine number (BLE and filtered
+    scans excluded). lat/lng is the cell's SW corner on the same grid as
+    member-territories, so cell keys line up for the planner join. The endpoint is
+    always complete → simple full replace, no 500k cap, no BLE filter, no merge."""
+    data = client.me_cells()
+    rows = []
+    for c in data.get("cells", []):
+        la, lo, aps = c.get("lat"), c.get("lng"), c.get("aps")
+        if la is None or lo is None or not aps:
             continue
         i, j = grid.cell_index(la, lo, glat, glng)
-        k = grid.key_from_index(i, j)
-        c = counts.get(k)
-        if c:
-            c[2] += 1
-        else:
-            counts[k] = [i, j, 1]
-    if truncated:
-        # Server capped the AP list (>500k scans, newest-first). The active turf is
-        # in the window; older cells sit below the cut and can't be fetched (no upper
-        # bound param). Merge max(old, new) per cell so the map converges instead of
-        # shrinking each cycle. Still only cell counts are stored — no raw APs.
-        log.warning("footprint of %s truncated at %s rows — merging instead of replacing",
-                    user_id, len(aps))
-        for k, v in counts.items():
-            conn.execute(
-                """INSERT INTO footprint_cells (user_id, cell_key, i, j, my_aps) VALUES (?,?,?,?,?)
-                   ON CONFLICT(user_id, cell_key)
-                   DO UPDATE SET my_aps = MAX(my_aps, excluded.my_aps)""",
-                (user_id, k, v[0], v[1], v[2]))
-    else:
-        conn.execute("DELETE FROM footprint_cells WHERE user_id = ?", (user_id,))
-        conn.executemany(
-            "INSERT INTO footprint_cells (user_id, cell_key, i, j, my_aps) VALUES (?,?,?,?,?)",
-            [(user_id, k, v[0], v[1], v[2]) for k, v in counts.items()],
-        )
-    conn.execute("UPDATE users SET footprint_at = ?, footprint_truncated = ? WHERE id = ?",
-                 (time.time(), int(truncated), user_id))
-    return len(counts)
+        rows.append((user_id, grid.key_from_index(i, j), i, j, int(aps)))
+    conn.execute("DELETE FROM footprint_cells WHERE user_id = ?", (user_id,))
+    conn.executemany(
+        "INSERT INTO footprint_cells (user_id, cell_key, i, j, my_aps) VALUES (?,?,?,?,?)", rows)
+    conn.execute("UPDATE users SET footprint_at = ? WHERE id = ?", (time.time(), user_id))
+    return len(rows)
 
 
 def _classify(prev_gid, cur_gid, my_gid):
@@ -253,11 +232,10 @@ def run_user(conn, user_row, lookup, glat, glng, gctx, team_cache) -> dict:
     me = client.me()
     my_gid = _num(me.get("gang_id"))
 
-    last_fp = float(user_row["footprint_at"] or 0)
-    have_fp = conn.execute(
-        "SELECT COUNT(*) n FROM footprint_cells WHERE user_id = ?", (uid,)).fetchone()["n"]
-    if have_fp == 0 or (time.time() - last_fp) > config.FOOTPRINT_REFRESH_SECONDS:
-        refresh_footprint(conn, client, uid, glat, glng)
+    # /api/me/cells is a small server-aggregated + 60s-cached call now, so refresh
+    # the footprint every cycle instead of hourly — "you have N APs here" stays fresh
+    # within one poll of taking a cell, no longer up to an hour stale.
+    refresh_footprint(conn, client, uid, glat, glng)
 
     initialized = bool(user_row["terr_init"])
     wl = user_row["watch_level"] if "watch_level" in user_row.keys() else "near"

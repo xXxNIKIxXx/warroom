@@ -190,7 +190,6 @@
       <div><span>{{ t('info_last_poll') }}</span><b>{{ meta.last_poll | localtime }}</b></div>
       <div><span>{{ t('info_users') }}</span><b>{{ user_count }} / {{ max_users }}</b></div>
     </div>
-    {% if meta.truncated %}<p class="hint trunc-hint">{{ t('info_truncated') }}</p>{% endif %}
     <h3 class="pl-sub">{{ t('chart_head') }}</h3>
     <div id="charts" class="charts"><p class="hint">{{ t('chart_none') }}</p></div>
 

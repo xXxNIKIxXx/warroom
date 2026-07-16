@@ -24,8 +24,6 @@ POLL_SECONDS = 300
 # Concurrent per-user poll workers. Deliberately small: this caps how many
 # simultaneous requests we send to the wdgwars API (be a good citizen).
 POLL_WORKERS = int(os.environ.get("WARROOM_POLL_WORKERS", "4"))
-# Re-read the full footprint (own APs) per user less frequently.
-FOOTPRINT_REFRESH_SECONDS = 3600
 REINFORCE_BUFFER = 3
 # Turf = own AP cells + ring of TURF_RING cells around them (Chebyshev).
 # 4 cells ≈ 6–9 km at ~50°N (0.02° ≈ 2.2 km lat / ~1.4 km lng).

@@ -18,12 +18,10 @@ def meta(conn, user: sqlite3.Row) -> dict:
     fp = conn.execute(
         "SELECT COUNT(*) n, COALESCE(SUM(my_aps),0) a FROM footprint_cells WHERE user_id = ?",
         (user["id"],)).fetchone()
-    keys = user.keys()
     return {
         "username": user["wdg_username"], "gang": user["gang"], "gang_id": user["gang_id"],
         "last_poll": user["last_poll"], "footprint_cells": fp["n"], "my_aps_total": fp["a"],
         "terr_init": bool(user["terr_init"]),
-        "truncated": bool(user["footprint_truncated"]) if "footprint_truncated" in keys else False,
     }
 
 

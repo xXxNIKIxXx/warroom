@@ -233,8 +233,6 @@ STRINGS = {
     "about_back": {"en": "Back to login", "de": "Zurück zum Login"},
     "contact_btn": {"en": "Contact the dev", "de": "Dem Dev schreiben"},
     "info_users": {"en": "Warband", "de": "Kriegerschar"},
-    "info_truncated": {"en": "🦍 Your turf is huge — the wdgwars API caps at 500k scans, so your map fills in as you keep playing (newest areas first).",
-                       "de": "🦍 Dein Revier ist riesig — die wdgwars-API kappt bei 500k Scans, deshalb füllt sich deine Karte beim Weiterspielen (neueste Gegenden zuerst)."},
     "install_head": {"en": "📱 Install as an app on your phone", "de": "📱 Als App aufs Handy holen"},
     "install_what": {"en": "Warroom is a PWA (progressive web app): a website you pin to your home screen. It opens fullscreen like a normal app and can send push alerts — no app store, no download.",
                      "de": "Warroom ist eine PWA (Progressive Web App): eine Website, die du dir auf den Startbildschirm legst. Sie öffnet im Vollbild wie eine normale App und kann Push-Meldungen schicken — ohne App-Store, ohne Download."},
