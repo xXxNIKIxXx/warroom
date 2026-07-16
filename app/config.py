@@ -29,8 +29,12 @@ REINFORCE_BUFFER = 3
 # 4 cells ≈ 6–9 km at ~50°N (0.02° ≈ 2.2 km lat / ~1.4 km lng).
 TURF_RING = 4
 # Background road-snap budget per poll cycle: how many not-yet-classified virgin
-# cells get checked against Overpass (8 cells/query → 48 = 6 queries per 5 min,
-# ~1.7k queries/day worst case — well within Overpass fair use). Water/forest
-# results are cached forever, so this converges: a few thousand cells are fully
-# classified within a day, then only freshly appearing ring cells trickle in.
-ROAD_DRIP = int(os.environ.get("WARROOM_ROAD_DRIP", "48"))
+# cells get checked against Overpass. Total work is bounded by the backlog (a
+# classified cell is cached forever), so the budget only sets how fast the
+# one-time backfill burns down — the per-minute rate is the politeness limit.
+# 600 cells = 75 queries per 5 min spread over DRIP_WORKERS mirror-rotated
+# workers ≈ 10 queries/min/mirror. Once the backlog is empty the drip idles.
+ROAD_DRIP = int(os.environ.get("WARROOM_ROAD_DRIP", "600"))
+# Parallel drip workers; each leads with a different Overpass mirror so the load
+# spreads instead of all requests queueing behind one flaky instance.
+DRIP_WORKERS = int(os.environ.get("WARROOM_DRIP_WORKERS", "3"))

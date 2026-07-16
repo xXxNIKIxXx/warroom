@@ -61,7 +61,29 @@ def drip_snap(conn, budget: int) -> int:
                     break
     if not batch:
         return 0
-    return len(roads.snap_cells(conn, batch))
+    # Fan the batch out over DRIP_WORKERS threads, each leading with a different
+    # Overpass mirror (shift) — 3× throughput and the load spreads across the
+    # instances instead of queueing behind whichever one is flaky right now.
+    chunks = [batch[x:x + roads.BATCH] for x in range(0, len(batch), roads.BATCH)]
+
+    def _work(ci: int, chunk: list) -> int:
+        wconn = db.connect()
+        try:
+            return len(roads.snap_cells(wconn, chunk, shift=ci))
+        finally:
+            wconn.close()
+
+    workers = max(1, min(config.DRIP_WORKERS, len(chunks)))
+    if workers == 1:
+        return sum(_work(ci, c) for ci, c in enumerate(chunks))
+    done = 0
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for fut in [pool.submit(_work, ci, c) for ci, c in enumerate(chunks)]:
+            try:
+                done += fut.result()
+            except Exception:
+                log.exception("Road-Drip-Worker fehlgeschlagen")
+    return done
 
 
 def drip_snap_async() -> None:

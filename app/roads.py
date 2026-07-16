@@ -58,7 +58,7 @@ def _ensure_grid(conn, glat: float, glng: float) -> None:
 
 
 def _query(bboxes: list[tuple[float, float, float, float]],
-           types: str = DRIVABLE) -> list[dict]:
+           types: str = DRIVABLE, shift: int = 0) -> list[dict]:
     parts = "".join(
         f'way["highway"~"^({types})$"]({s:.6f},{w:.6f},{n:.6f},{e:.6f});'
         for (s, w, n, e) in bboxes)
@@ -67,7 +67,11 @@ def _query(bboxes: list[tuple[float, float, float, float]],
     ql = f"[out:json][timeout:{TIMEOUT}];({parts});out skel geom;"
     data = urllib.parse.urlencode({"data": ql}).encode()
     last = None
-    for url in OVERPASS_MIRRORS:
+    # shift rotates the mirror order so parallel drip workers each lead with a
+    # different instance instead of all hammering the same one.
+    n_mirrors = len(OVERPASS_MIRRORS)
+    mirrors = [OVERPASS_MIRRORS[(shift + x) % n_mirrors] for x in range(n_mirrors)]
+    for url in mirrors:
         req = urllib.request.Request(
             url, data=data,
             headers={"User-Agent": config.USER_AGENT, "Accept": "application/json"})
@@ -101,7 +105,8 @@ def _nearest_in_cell(ways: list[dict], s, w, n, e, clat, clng):
     return best
 
 
-def snap_cells(conn, cells: list[tuple[int, int]]) -> dict[str, list | None]:
+def snap_cells(conn, cells: list[tuple[int, int]],
+               shift: int = 0) -> dict[str, list | None]:
     """cell_key → [lat, lng] on the road, or None if there verifiably is none there.
 
     Cells whose query failed are MISSING from the result — the caller must ask
@@ -131,7 +136,7 @@ def snap_cells(conn, cells: list[tuple[int, int]]) -> dict[str, list | None]:
             boxes.append((s, w, n, e))
         t0 = time.monotonic()
         try:
-            ways = _query(boxes)
+            ways = _query(boxes, shift=shift)
             log.info("Overpass: %d Zellen, %d Wege, %.1f s",
                      len(chunk), len(ways), time.monotonic() - t0)
         except (urllib.error.URLError, TimeoutError, ValueError, OSError) as ex:
@@ -162,7 +167,7 @@ def snap_cells(conn, cells: list[tuple[int, int]]) -> dict[str, list | None]:
         # The majority of cells hit in pass one, so this stays cheap.
         if missed:
             try:
-                tways = _query([boxes[idx] for idx in missed], FALLBACK)
+                tways = _query([boxes[idx] for idx in missed], FALLBACK, shift=shift)
             except (urllib.error.URLError, TimeoutError, ValueError, OSError) as ex:
                 # Same rule as above: a failed query is NOT a finding — leave the
                 # missed cells unclassified instead of branding them roadless.
