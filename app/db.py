@@ -112,7 +112,10 @@ def connect() -> sqlite3.Connection:
     # journal_mode=WAL is set ONCE in init_db (it persists in the DB file) — setting
     # it per-connection needs an exclusive lock and fails/blocks under concurrent
     # poll workers.
-    conn.execute("PRAGMA busy_timeout=5000")  # poll + request contend → wait instead of "locked"
+    # Several poll workers now rewrite their footprint every cycle (big DELETE+INSERT
+    # batches), plus request threads read — WAL serializes writers, so give a waiting
+    # writer plenty of room to queue instead of erroring with "database is locked".
+    conn.execute("PRAGMA busy_timeout=30000")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
 

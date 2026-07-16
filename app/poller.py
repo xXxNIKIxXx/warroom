@@ -33,18 +33,26 @@ def refresh_footprint(conn, client: Wdg, user_id: int, glat: float, glng: float)
     member-territories, so cell keys line up for the planner join. The endpoint is
     always complete → simple full replace, no 500k cap, no BLE filter, no merge."""
     data = client.me_cells()
-    rows = []
+    new: dict[str, tuple] = {}
     for c in data.get("cells", []):
         la, lo, aps = c.get("lat"), c.get("lng"), c.get("aps")
         if la is None or lo is None or not aps:
             continue
         i, j = grid.cell_index(la, lo, glat, glng)
-        rows.append((user_id, grid.key_from_index(i, j), i, j, int(aps)))
+        new[grid.key_from_index(i, j)] = (i, j, int(aps))
+    # Skip the DELETE+INSERT when nothing changed since last cycle — a player's turf
+    # rarely moves between 5-min polls, and this keeps concurrent write pressure (and
+    # "database is locked" contention across workers) off the DB in the common case.
+    cur = {r["cell_key"]: r["my_aps"] for r in conn.execute(
+        "SELECT cell_key, my_aps FROM footprint_cells WHERE user_id = ?", (user_id,))}
+    if len(cur) == len(new) and all(cur.get(k) == v[2] for k, v in new.items()):
+        return len(new)
     conn.execute("DELETE FROM footprint_cells WHERE user_id = ?", (user_id,))
     conn.executemany(
-        "INSERT INTO footprint_cells (user_id, cell_key, i, j, my_aps) VALUES (?,?,?,?,?)", rows)
+        "INSERT INTO footprint_cells (user_id, cell_key, i, j, my_aps) VALUES (?,?,?,?,?)",
+        [(user_id, k, v[0], v[1], v[2]) for k, v in new.items()])
     conn.execute("UPDATE users SET footprint_at = ? WHERE id = ?", (time.time(), user_id))
-    return len(rows)
+    return len(new)
 
 
 def _classify(prev_gid, cur_gid, my_gid):
