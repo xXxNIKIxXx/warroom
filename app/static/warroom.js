@@ -73,6 +73,36 @@ document.addEventListener('DOMContentLoaded', function () {
     if (b && !b.hidden) b.hidden = true;
   });
 
+  // ---- Units: metric vs imperial ----
+  // One switch drives every distance the client renders (planner rows, ring
+  // labels/steps, tour total, nav guidance). Auto-default: en-US browsers get
+  // miles (Canada thinks in km, so language alone would be wrong); manual
+  // override per device via the Info-tab toggle, stored in localStorage.
+  var MI_KM = 1.609344;
+  var units = null;
+  try { units = localStorage.getItem('wr_units'); } catch (e) {}
+  if (units !== 'mi' && units !== 'km') {
+    units = ((navigator.language || '').toLowerCase() === 'en-us') ? 'mi' : 'km';
+  }
+  function fmtDist(km) {   // km (float) → "3.4 km" / "2.1 mi"
+    var v = units === 'mi' ? km / MI_KM : km;
+    return (v < 10 ? Math.round(v * 10) / 10 : Math.round(v)) + ' ' + units;
+  }
+  var unitsBtn = document.getElementById('units-toggle');
+  function unitsBtnText() {
+    if (unitsBtn) unitsBtn.textContent = units === 'mi' ? 'Imperial (mi)' : 'Metric (km)';
+  }
+  unitsBtnText();
+  if (unitsBtn) unitsBtn.addEventListener('click', function () {
+    units = units === 'mi' ? 'km' : 'mi';
+    try { localStorage.setItem('wr_units', units); } catch (e) {}
+    unitsBtnText();
+    plRender();        // planner distances
+    renderRings();     // ring labels + step series
+    renderTour();      // tour total line
+    var mp = myPos(); if (mp) navUpdate(mp.lat, mp.lng);   // nav banner distance
+  });
+
   var rects = [];
   var cellLayer = L.layerGroup().addTo(map);
   function renderCells() {
@@ -247,8 +277,7 @@ document.addEventListener('DOMContentLoaded', function () {
     li.className = 'pl-item' + (c.t === 'enemy' && c.gap === 0 ? ' pl-lead' : '');
     li.dataset.lat = c.lat;
     li.dataset.lng = c.lng;
-    var dist = (gps && c._d != null)
-      ? tf(T.km_away, {n: c._d < 10 ? c._d.toFixed(1) : Math.round(c._d)}) : '';
+    var dist = (gps && c._d != null) ? fmtDist(c._d) : '';
     var label, dot, tag, line;
     if (c.t === 'enemy') {
       label = esc(c.g);
@@ -484,16 +513,24 @@ document.addEventListener('DOMContentLoaded', function () {
   var ringLayer = L.layerGroup();
   var ringsOn = false;
   var RING_N = 4, RING_TARGET_PX = 95;
-  var RING_STEPS = [100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000];
+  // Own 1-2-5 series per unit system: converting 2 km to 1.24 mi would make the
+  // labels useless — imperial users get rings on clean mile values instead.
+  var RING_STEPS_M = [100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000];
+  var RING_STEPS_MI = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100].map(
+    function (m) { return m * 1609.344; });
   function ringStep() {
+    var steps = units === 'mi' ? RING_STEPS_MI : RING_STEPS_M;
     var c = map.getCenter();
     var mpp = 40075016.686 * Math.abs(Math.cos(c.lat * Math.PI / 180)) /
               Math.pow(2, map.getZoom() + 8);   // meters per screen pixel
     var raw = mpp * RING_TARGET_PX;
-    for (var i = 0; i < RING_STEPS.length; i++) if (RING_STEPS[i] >= raw) return RING_STEPS[i];
-    return RING_STEPS[RING_STEPS.length - 1];
+    for (var i = 0; i < steps.length; i++) if (steps[i] >= raw) return steps[i];
+    return steps[steps.length - 1];
   }
-  function ringFmt(r) { return r < 1000 ? r + ' m' : (Math.round(r / 100) / 10) + ' km'; }
+  function ringFmt(r) {   // r in meters
+    if (units === 'mi') return (Math.round(r / 1609.344 * 10) / 10) + ' mi';
+    return r < 1000 ? r + ' m' : (Math.round(r / 100) / 10) + ' km';
+  }
   function renderRings() {
     ringLayer.clearLayers();
     if (!ringsOn) return;
@@ -982,7 +1019,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     if (!n) { tourLayer.clearLayers(); return; }
     var km = totalKm();
-    tourCount.textContent = km != null ? tf(T.tour_total, {n: n, km: km.toFixed(1)}) : tf(T.tour_one, {n: n});
+    tourCount.textContent = km != null ? tf(T.tour_total, {n: n, d: fmtDist(km)}) : tf(T.tour_one, {n: n});
     tourList.innerHTML = tour.map(function (s, i) {
       return '<li' + (tourOrdered && i >= MAPS_MAX ? ' class="over-cap"' : '') + '>' +
         (tourOrdered ? '<b>' + (i + 1) + '.</b> ' : '') +
@@ -1009,7 +1046,7 @@ document.addEventListener('DOMContentLoaded', function () {
       follow = true;
     }
     var mp = myPos(); if (mp) navUpdate(mp.lat, mp.lng);
-    else { navBanner.hidden = false; navBanner.className = 'nav-banner'; navBanner.innerHTML = tf(T.nav_to, {k: 1, n: tourOrdered.length, km: '…'}); }
+    else { navBanner.hidden = false; navBanner.className = 'nav-banner'; navBanner.innerHTML = tf(T.nav_to, {k: 1, n: tourOrdered.length, d: '…'}); }
   }
   function navUpdate(lat, lng) {
     if (!guidanceOn || !tourOrdered) return;
@@ -1025,7 +1062,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var tgt = stopPos(tourOrdered[navIdx]), here = {lat: lat, lng: lng};
     navBanner.hidden = false; navBanner.className = 'nav-banner';
     navBanner.innerHTML = '<span class="nav-arrow" style="transform:rotate(' + bearing(here, tgt).toFixed(0) + 'deg)">↑</span> ' +
-      tf(T.nav_to, {k: navIdx + 1, n: tourOrdered.length, km: hav(here, tgt).toFixed(1)});
+      tf(T.nav_to, {k: navIdx + 1, n: tourOrdered.length, d: fmtDist(hav(here, tgt))});
   }
 
   document.addEventListener('click', function (e) {

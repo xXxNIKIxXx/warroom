@@ -479,6 +479,12 @@ path.cell-picked {
   background: linear-gradient(180deg, rgba(143, 167, 189, 0.20), rgba(143, 167, 189, 0.06));
 }
 
+/* Units toggle (Info tab): metric vs imperial */
+.units-row {
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.5rem 0.2rem; font-size: 0.8rem; color: var(--muted);
+}
+
 /* Map credits behind the ⓘ button (bottom right) — replaces the permanent
    Leaflet/OSM banner that covered the map corner. Box opens to the left. */
 .info-ctl { position: relative; }

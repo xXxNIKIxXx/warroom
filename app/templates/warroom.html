@@ -194,6 +194,11 @@
     <h3 class="pl-sub">{{ t('chart_head') }}</h3>
     <div id="charts" class="charts"><p class="hint">{{ t('chart_none') }}</p></div>
 
+    <div class="units-row">
+      <span>{{ t('units_label') }}</span>
+      <button type="button" class="rb-jump" id="units-toggle">km / mi</button>
+    </div>
+
     <h3 class="pl-sub">{{ t('pw_head') }}</h3>
     {% if pw == 'ok' %}<div class="ok-msg">{{ t('pw_ok') }}</div>
     {% elif pw == 'err' %}<div class="auth-err">{{ t('pw_err') }}</div>{% endif %}

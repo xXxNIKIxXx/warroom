@@ -201,8 +201,9 @@ STRINGS = {
     "chart_cl": {"en": "Team captured / lost", "de": "Team erobert / verloren"},
     "chart_none": {"en": "Charts appear after a few polls.", "de": "Charts erscheinen nach ein paar Polls."},
 
-    # Distance rings layer
+    # Distance rings layer + units
     "rings_layer": {"en": "Distance", "de": "Distanz"},
+    "units_label": {"en": "Units", "de": "Einheiten"},
 
     # Change password
     "pw_head": {"en": "Change password", "de": "Passwort ändern"},
@@ -297,7 +298,6 @@ JS = {
     "virgin_tag": {"en": "untouched", "de": "unberührt"},
     "virgin_line": {"en": "Never scanned by anyone — drive there and it's yours.",
                     "de": "Von niemandem je gescannt — hinfahren und es gehört dir."},
-    "km_away": {"en": "{n} km", "de": "{n} km"},
     "shown_of": {"en": "{k} of {n} shown", "de": "{k} von {n} gezeigt"},
     "lead": {"en": "already ahead", "de": "führst schon"},
     "gap_aps": {"en": "−{n} APs", "de": "−{n} APs"},
@@ -306,7 +306,7 @@ JS = {
     "free_grab": {"en": "just grab it", "de": "nur abholen"},
     "free_line": {"en": "<b>{my}</b> of your APs — almost yours already",
                   "de": "<b>{my}</b> eigene APs — schon fast deins"},
-    "tour_total": {"en": "{n} stops · {km} km", "de": "{n} Stopps · {km} km"},
+    "tour_total": {"en": "{n} stops · {d}", "de": "{n} Stopps · {d}"},
     "tour_one": {"en": "{n} stops", "de": "{n} Stopps"},
     "push_on": {"en": "This device gets battle reports", "de": "Dieses Gerät bekommt Schlachtmeldungen"},
     "push_off": {"en": "No reports to this device", "de": "Keine Meldungen auf dieses Gerät"},
@@ -316,7 +316,7 @@ JS = {
     "push_failed": {"en": "The raven did not make it", "de": "Der Rabe kam nicht durch"},
     "push_denied": {"en": "Notifications are blocked for this site — allow them in the browser settings.",
                     "de": "Benachrichtigungen sind für diese Seite blockiert — im Browser erlauben."},
-    "nav_to": {"en": "Stop {k}/{n} · {km} km", "de": "Stopp {k}/{n} · {km} km"},
+    "nav_to": {"en": "Stop {k}/{n} · {d}", "de": "Stopp {k}/{n} · {d}"},
     "nav_arrived": {"en": "Stop {k} reached!", "de": "Stopp {k} erreicht!"},
     "nav_done": {"en": "Tour done — {n} cells driven!", "de": "Tour fertig — {n} Zellen abgefahren!"},
     "no_road": {"en": "No road in this cell — using the centre. Approach it yourself.",
