@@ -479,6 +479,18 @@ path.cell-picked {
   background: linear-gradient(180deg, rgba(143, 167, 189, 0.20), rgba(143, 167, 189, 0.06));
 }
 
+/* Map credits behind the ⓘ button (bottom right) — replaces the permanent
+   Leaflet/OSM banner that covered the map corner. Box opens to the left. */
+.info-ctl { position: relative; }
+.attrib-box {
+  position: absolute; right: calc(100% + 8px); bottom: 0;
+  background: rgba(10, 14, 18, 0.92); border: 1px solid var(--line);
+  border-radius: 4px; padding: 0.3rem 0.55rem; white-space: nowrap;
+  font-size: 0.68rem; color: var(--muted);
+}
+.attrib-box a { color: var(--frost); }
+.attrib-box[hidden] { display: none; }  /* the usual [hidden]-vs-display trap */
+
 /* Distance-ring labels (radar layer): small tag at each ring's north point.
    Near-white like the rings — gold vanished on top of gold own-cells. */
 .ring-label {

@@ -44,10 +44,34 @@ document.addEventListener('DOMContentLoaded', function () {
     return cellByKey[i + '_' + j] || null;
   }
 
-  var map = L.map('map', {zoomControl: true, zoomSnap: 0.5}).setView([50, -20], 3);
+  // Attribution lives behind the ⓘ button (bottom right) instead of the permanent
+  // banner — see the InfoCtl control below. Links stay one tap away (OSM requires
+  // accessible attribution), they just don't cover the map corner all the time.
+  var map = L.map('map', {zoomControl: true, zoomSnap: 0.5, attributionControl: false}).setView([50, -20], 3);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 18, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    maxZoom: 18
   }).addTo(map);
+
+  // ⓘ control: collapsed map credits. Tap toggles the box; tapping the map closes it.
+  var InfoCtl = L.Control.extend({options: {position: 'bottomright'}, onAdd: function () {
+    var d = L.DomUtil.create('div', 'leaflet-bar info-ctl');
+    d.innerHTML = '<div id="attrib-box" class="attrib-box" hidden>' +
+      '<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a> · &copy; ' +
+      '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors' +
+      '</div><a href="#" id="attrib-btn" role="button" title="Info">&#9432;</a>';
+    L.DomEvent.disableClickPropagation(d);
+    return d;
+  }});
+  map.addControl(new InfoCtl());
+  document.getElementById('attrib-btn').addEventListener('click', function (e) {
+    e.preventDefault();
+    var b = document.getElementById('attrib-box');
+    b.hidden = !b.hidden;
+  });
+  map.on('click', function () {
+    var b = document.getElementById('attrib-box');
+    if (b && !b.hidden) b.hidden = true;
+  });
 
   var rects = [];
   var cellLayer = L.layerGroup().addTo(map);
