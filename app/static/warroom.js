@@ -478,7 +478,9 @@ document.addEventListener('DOMContentLoaded', function () {
     var s = ringStep();
     for (var k = 1; k <= RING_N; k++) {
       var r = s * k;
-      L.circle([p.lat, p.lng], {radius: r, color: '#e8b64c', weight: 1, opacity: 0.55,
+      // Near-white, NOT gold: own cells glow gold, so gold rings vanished on top
+      // of them. White reads on dark tiles, gold, red and frost alike.
+      L.circle([p.lat, p.lng], {radius: r, color: '#f2f6fa', weight: 1.5, opacity: 0.7,
         fill: false, dashArray: '4 6', interactive: false}).addTo(ringLayer);
       // Label at the ring's north point; non-interactive so cell popups stay clickable.
       L.marker([p.lat + r / 111320, p.lng], {interactive: false, keyboard: false,
