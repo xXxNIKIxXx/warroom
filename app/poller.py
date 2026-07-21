@@ -343,7 +343,18 @@ def run_user(conn, user_row, lookup, glat, glng, gctx, team_cache) -> dict:
     # /api/me/cells is a small server-aggregated + 60s-cached call now, so refresh
     # the footprint every cycle instead of hourly — "you have N APs here" stays fresh
     # within one poll of taking a cell, no longer up to an hour stale.
-    refresh_footprint(conn, client, uid, glat, glng)
+    #
+    # Footprint refresh is enrichment, not a gate. If /api/me/cells is unavailable
+    # (a transient 404/5xx on the wdgwars side), keep the last good footprint and carry
+    # on: the territory diff runs on the existing footprint and — crucially —
+    # snapshot_stats still updates last_poll/stats. A single dead sub-endpoint must not
+    # freeze the whole user's poll (it did once, on 2026-07-21, when me/cells 404'd all
+    # day and every user's last_poll stuck). me() above stays the real reachability gate.
+    try:
+        refresh_footprint(conn, client, uid, glat, glng)
+    except WdgError as e:
+        log.warning("footprint für %s uebersprungen (me/cells): %s",
+                    user_row["wdg_username"], e)
 
     initialized = bool(user_row["terr_init"])
     wl = user_row["watch_level"] if "watch_level" in user_row.keys() else "near"
