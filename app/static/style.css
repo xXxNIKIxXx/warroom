@@ -479,6 +479,13 @@ path.cell-picked {
   background: linear-gradient(180deg, rgba(143, 167, 189, 0.20), rgba(143, 167, 189, 0.06));
 }
 
+/* Distance-ring labels (radar layer): small gold tag at each ring's north point */
+.ring-label {
+  color: #e8b64c; font-family: var(--mono); font-size: 0.68rem; font-weight: 600;
+  text-align: center; white-space: nowrap; pointer-events: none;
+  text-shadow: 0 0 3px #000, 0 0 6px rgba(0, 0, 0, 0.9);
+}
+
 /* ---- Planner: target list (row = gang + gap + progress bar) ---- */
 .planer-list { list-style: none; margin: 0; padding: 0; }
 .pl-item {

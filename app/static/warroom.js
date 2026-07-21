@@ -382,6 +382,7 @@ document.addEventListener('DOMContentLoaded', function () {
     maybePush(lat, lng);
     navUpdate(lat, lng);
     plOnPosition();  // keep distances updated; re-sorting only throttled
+    if (ringsOn) renderRings();   // rings follow the moving GPS position
   }
   function onPosErr() { here.hidden = false; here.className = 'here-banner out'; here.innerHTML = T.no_gps; }
   var LocateCtl = L.Control.extend({options: {position: 'topleft'}, onAdd: function () {
@@ -436,6 +437,7 @@ document.addEventListener('DOMContentLoaded', function () {
     updateHere(lat, lng);
     navUpdate(lat, lng);
     plOnPosition();
+    if (ringsOn) renderRings();   // re-center rings on the new manual pin
   }
   document.getElementById('setloc-btn').addEventListener('click', function (e) {
     e.preventDefault();
@@ -447,6 +449,56 @@ document.addEventListener('DOMContentLoaded', function () {
     var c = map.getCenter();
     setManualPos(c.lat, c.lng);
     locModeShow(false);
+  });
+
+  // ---- Distance rings ("radar"): equidistant circles around your position ----
+  // For eyeballing distances. Geographic radii (L.circle in meters) scale with
+  // zoom by themselves; on zoomend we only re-pick the step from a 1-2-5 series
+  // so ~4 evenly spaced rings stay in view. Centered on myPos() (GPS follow or
+  // the manual ⌖ pin) and re-centered whenever the position moves. Pure client
+  // layer — applyLive swaps never touch it.
+  var ringLayer = L.layerGroup();
+  var ringsOn = false;
+  var RING_N = 4, RING_TARGET_PX = 95;
+  var RING_STEPS = [100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000];
+  function ringStep() {
+    var c = map.getCenter();
+    var mpp = 40075016.686 * Math.abs(Math.cos(c.lat * Math.PI / 180)) /
+              Math.pow(2, map.getZoom() + 8);   // meters per screen pixel
+    var raw = mpp * RING_TARGET_PX;
+    for (var i = 0; i < RING_STEPS.length; i++) if (RING_STEPS[i] >= raw) return RING_STEPS[i];
+    return RING_STEPS[RING_STEPS.length - 1];
+  }
+  function ringFmt(r) { return r < 1000 ? r + ' m' : (Math.round(r / 100) / 10) + ' km'; }
+  function renderRings() {
+    ringLayer.clearLayers();
+    if (!ringsOn) return;
+    var p = myPos();
+    if (!p) return;
+    var s = ringStep();
+    for (var k = 1; k <= RING_N; k++) {
+      var r = s * k;
+      L.circle([p.lat, p.lng], {radius: r, color: '#e8b64c', weight: 1, opacity: 0.55,
+        fill: false, dashArray: '4 6', interactive: false}).addTo(ringLayer);
+      // Label at the ring's north point; non-interactive so cell popups stay clickable.
+      L.marker([p.lat + r / 111320, p.lng], {interactive: false, keyboard: false,
+        icon: L.divIcon({className: 'ring-label', iconSize: [64, 14], iconAnchor: [32, 7],
+          html: ringFmt(r)})}).addTo(ringLayer);
+    }
+  }
+  map.on('zoomend', renderRings);   // cheap: 4 circles + 4 labels, no need to diff the step
+  document.querySelectorAll('.layer-chip[data-layer="rings"]').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      if (!ringsOn && !myPos()) {   // no position yet → explain instead of a dead toggle
+        here.hidden = false; here.className = 'here-banner out'; here.innerHTML = T.rings_need_pos;
+        setTimeout(function () { if (!myPos()) here.hidden = true; }, 3000);
+        return;
+      }
+      ringsOn = !ringsOn;
+      chip.classList.toggle('on', ringsOn);
+      if (ringsOn) { ringLayer.addTo(map); renderRings(); }
+      else { ringLayer.clearLayers(); map.removeLayer(ringLayer); }
+    });
   });
 
   // ---- Crew: friends' live positions (12s poll) + own push while sharing ----

@@ -201,6 +201,9 @@ STRINGS = {
     "chart_cl": {"en": "Team captured / lost", "de": "Team erobert / verloren"},
     "chart_none": {"en": "Charts appear after a few polls.", "de": "Charts erscheinen nach ein paar Polls."},
 
+    # Distance rings layer
+    "rings_layer": {"en": "Distance", "de": "Distanz"},
+
     # Change password
     "pw_head": {"en": "Change password", "de": "Passwort ändern"},
     "pw_old": {"en": "Current password", "de": "Aktuelles Passwort"},
@@ -329,6 +332,8 @@ JS = {
     "chart_total": {"en": "APs total", "de": "APs gesamt"},
     "chart_rank": {"en": "Gang rank", "de": "Gang-Rang"},
     "chart_cl": {"en": "Team captured / lost", "de": "Team erobert / verloren"},
+    "rings_need_pos": {"en": "Set your position first (GPS or ⌖)",
+                       "de": "Erst Standort setzen (GPS oder ⌖)"},
 }
 
 
