@@ -398,15 +398,26 @@ path.cell-picked {
 }
 .leaflet-control-attribution a { color: var(--muted) !important; }
 
-/* ---- Panel: command console ---- */
+/* ---- Panel: command console (mobile: a snap-height bottom sheet) ---- */
 .panel {
-  flex: 0 0 34%; display: flex; flex-direction: column;
+  display: flex; flex-direction: column;
   background: var(--panel);
   background-image: var(--grain);
   border-top: 1px solid var(--edge);
   box-shadow: 0 -1px 0 rgba(232, 182, 76, 0.14);
   min-height: 0;
+  position: relative; z-index: 500;  /* covers the map's bottom here-banner when raised */
 }
+/* Bottom-sheet grab handle (mobile only; hidden on the desktop grid below) */
+.sheet-grab {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+  height: 22px; background: none; border: 0; padding: 0; cursor: pointer;
+}
+.sheet-grab span {
+  width: 40px; height: 4px; border-radius: 2px; background: var(--edge);
+  transition: background 0.15s ease, width 0.15s ease;
+}
+.sheet-grab:hover span, .sheet-grab:active span { background: var(--gold-soft); width: 52px; }
 /* Bottom tab bar (thumb zone): last child of the panel column, so it pins to the
    bottom above the scrollable .tabc. Safe-area padding lives HERE now so the bar's
    background fills down to the screen edge and labels sit above the home indicator. */
@@ -680,8 +691,19 @@ path.cell-picked {
 }
 .info-grid b { font-family: var(--mono); font-size: 0.95rem; }
 
+/* Bottom sheet (mobile): the panel snaps between peek/half/full via tap-to-cycle
+   (grab handle) or the MAP/content tabs. Scoped below 1000px — the desktop grid
+   keeps the panel as a fixed right flank, ignoring these heights. */
+@media (max-width: 999px) {
+  .panel { flex: none; height: 45dvh; transition: height 0.22s ease; }
+  .panel.snap-peek { height: 13dvh; }
+  .panel.snap-half { height: 45dvh; }
+  .panel.snap-full { height: 88dvh; }
+  .stage, .map { min-height: 0; }   /* let the map shrink when the sheet is full */
+  .tab { font-size: 0.72rem; letter-spacing: 0.04em; }   /* five tabs → a touch smaller */
+}
+
 @media (min-width: 820px) {
-  .panel { flex-basis: 360px; }
   .info-grid { grid-template-columns: 1fr 1fr 1fr 1fr; }
   .brand { font-size: 1.25rem; }
 }
@@ -695,10 +717,11 @@ path.cell-picked {
   .loading-bar { grid-column: 1 / -1; grid-row: 3; }
   .stage { grid-column: 1; grid-row: 4; }
   .panel {
-    grid-column: 2; grid-row: 4; flex-basis: auto;
+    grid-column: 2; grid-row: 4; flex-basis: auto; height: auto;
     border-top: 0; border-left: 1px solid var(--edge);
     box-shadow: -1px 0 0 rgba(232, 182, 76, 0.14);
   }
+  .sheet-grab { display: none; }   /* no bottom sheet on the desktop grid */
   .info-grid { grid-template-columns: 1fr 1fr; }
 }
 

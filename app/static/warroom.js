@@ -385,12 +385,51 @@ document.addEventListener('DOMContentLoaded', function () {
     if (e.target && e.target.id === 'pl-sort') { plSort = e.target.value; plShown = PL_PAGE; plRender(); }
   });
 
-  function showTab(name) {
-    document.querySelectorAll('.tab').forEach(function (x) { x.classList.toggle('active', x.dataset.tab === name); });
-    document.querySelectorAll('.tabc').forEach(function (c) { c.hidden = c.dataset.tabc !== name; });
+  // ---- Bottom sheet: the panel snaps between peek/half/full (UI redesign step 4) ----
+  // Tap-to-cycle only (drag physics deferred). The MAP tab lowers to peek; content
+  // tabs raise a peeked sheet to half. Snap height changes the map container size, so
+  // every snap calls map.invalidateSize() (twice: now + after the CSS transition).
+  // applyLive still innerHTML-swaps #planner-body/#watcher-body/#info-grid untouched —
+  // this only moves whole .tabc/.panel containers, never their IDs.
+  var panelEl = document.querySelector('.panel');
+  var currentSnap = 'half';
+  var activeContent = (initTab && initTab !== 'planer') ? initTab : 'planer';
+  function renderTabsActive() {
+    var mark = currentSnap === 'peek' ? 'map' : activeContent;
+    document.querySelectorAll('.tab').forEach(function (x) {
+      x.classList.toggle('active', x.dataset.tab === mark);
+    });
+  }
+  function invalidateSoon() {
     map.invalidateSize();
+    setTimeout(function () { map.invalidateSize(); }, 240);   // after the height transition
+  }
+  function setSnap(s) {
+    currentSnap = s;
+    panelEl.classList.remove('snap-peek', 'snap-half', 'snap-full');
+    panelEl.classList.add('snap-' + s);
+    renderTabsActive();
+    invalidateSoon();
+  }
+  function showContent(name) {
+    activeContent = name;
+    document.querySelectorAll('.tabc').forEach(function (c) { c.hidden = c.dataset.tabc !== name; });
+    if (currentSnap === 'peek') setSnap('half');
+    else { renderTabsActive(); invalidateSoon(); }
     if (name === 'planer') maybeCoach();
   }
+  document.querySelectorAll('.tab').forEach(function (t) {
+    t.addEventListener('click', function () {
+      if (t.dataset.tab === 'map') setSnap('peek');
+      else showContent(t.dataset.tab);
+    });
+  });
+  var grab = document.getElementById('sheet-grab');
+  if (grab) grab.addEventListener('click', function () {
+    var order = ['peek', 'half', 'full'];
+    setSnap(order[(order.indexOf(currentSnap) + 1) % order.length]);
+  });
+
   // Planner/tour how-to as a ONE-TIME coach toast instead of two permanent hint
   // paragraphs — fires the first time the planner is seen, then never again.
   function maybeCoach() {
@@ -400,11 +439,11 @@ document.addEventListener('DOMContentLoaded', function () {
     try { localStorage.setItem('wr_hints_seen', '1'); } catch (e) {}
     toast(T.planner_hint + '<br>' + T.tour_empty, 8000);
   }
-  document.querySelectorAll('.tab').forEach(function (t) {
-    t.addEventListener('click', function () { showTab(t.dataset.tab); });
-  });
-  if (initTab && initTab !== 'planer') showTab(initTab);
-  else setTimeout(maybeCoach, 1200);   // planner is the landing tab → coach after load settles
+
+  // Initial state: show the landing tab's content at half height.
+  document.querySelectorAll('.tabc').forEach(function (c) { c.hidden = c.dataset.tabc !== activeContent; });
+  setSnap('half');
+  if (activeContent === 'planer') setTimeout(maybeCoach, 1200);
 
   // ---- Follow mode: own live position + "you are here" context ----
   var meMarker = null, meCircle = null, follow = false, watchId = null;

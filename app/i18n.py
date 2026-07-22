@@ -204,6 +204,9 @@ STRINGS = {
     # Distance rings layer + units
     "rings_layer": {"en": "Distance", "de": "Distanz"},
     "units_label": {"en": "Units", "de": "Einheiten"},
+    # Bottom sheet
+    "tab_map": {"en": "Map", "de": "Karte"},
+    "sheet_toggle": {"en": "Resize panel", "de": "Panel-Höhe"},
 
     # Change password
     "pw_head": {"en": "Change password", "de": "Passwort ändern"},
