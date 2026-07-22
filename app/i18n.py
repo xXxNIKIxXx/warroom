@@ -368,6 +368,8 @@ JS = {
                      "de": "Aufnahme braucht GPS — erst Follow (◎) starten"},
     "cov_started": {"en": "Coverage recording — brushing your path",
                     "de": "Abdeckung wird aufgenommen — dein Weg wird gemalt"},
+    "cov_resumed": {"en": "Recording resumed — keeping the screen awake",
+                    "de": "Aufnahme fortgesetzt — Bildschirm bleibt wach"},
 }
 
 

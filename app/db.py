@@ -107,6 +107,10 @@ CREATE TABLE IF NOT EXISTS coverage_pts (
     ts       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_coverage_user ON coverage_pts(user_id, id);
+-- Idempotent flush: a point re-sent by the unload/reopen safety net carries the exact
+-- same (lat,lng,ts client capture time), so INSERT OR IGNORE against this unique key
+-- drops the duplicate instead of piling identical discs on the same spot.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_coverage_dedup ON coverage_pts(user_id, lat, lng, ts);
 -- Web push: one row per device (endpoint). lang = language of the device at subscribe time.
 CREATE TABLE IF NOT EXISTS push_subs (
     endpoint   TEXT PRIMARY KEY,

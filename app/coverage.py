@@ -33,8 +33,10 @@ def add_points(conn: sqlite3.Connection, user_id: int, pts: list) -> int:
         rows.append((user_id, lat, lng, _clamp(r, MIN_R, MAX_R), str(t) if t else None))
     if not rows:
         return 0
+    # OR IGNORE + the (user_id,lat,lng,ts) unique index make re-sends idempotent, so the
+    # unload safety net can fire-and-forget without ever duplicating a disc.
     conn.executemany(
-        "INSERT INTO coverage_pts (user_id, lat, lng, radius_m, src, ts) "
+        "INSERT OR IGNORE INTO coverage_pts (user_id, lat, lng, radius_m, src, ts) "
         "VALUES (?, ?, ?, ?, 'gps', COALESCE(?, datetime('now')))", rows)
     return len(rows)
 

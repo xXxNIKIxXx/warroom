@@ -760,6 +760,8 @@ document.addEventListener('DOMContentLoaded', function () {
   var hasVirgin = !!(DATA.virginAll && DATA.virginAll.length);
   try { var rr = parseInt(localStorage.getItem('wr_cov_radius'), 10); if (rr) recRadius = rr; } catch (e) {}
   try { covQueue = JSON.parse(localStorage.getItem('wr_cov_queue') || '[]') || []; } catch (e) { covQueue = []; }
+  var wasRec = false;
+  try { wasRec = localStorage.getItem('wr_cov_rec') === '1'; } catch (e) {}   // were we recording when the page went away?
 
   function fmtRadius(m) {
     return units === 'mi' ? (Math.round(m * 3.28084 / 10) * 10) + ' ft' : m + ' m';
@@ -784,12 +786,17 @@ document.addEventListener('DOMContentLoaded', function () {
   function covPersist() {
     try { localStorage.setItem('wr_cov_queue', JSON.stringify(covQueue)); } catch (e) {}
   }
-  function covFlush() {
+  // keepalive=true lets the request survive the page being backgrounded/closed (unload
+  // safety net). The queue is only cleared on a confirmed .then, so if the page is
+  // discarded mid-flight the points re-flush on reopen — server OR IGNORE dedups them.
+  function covFlush(keepalive) {
     if (covFlushing || !covQueue.length) return;
     covFlushing = true;
     var batch = covQueue.slice(0, 500);
-    fetch('/coverage', {method: 'POST', headers: {'Content-Type': 'application/json',
-      'X-Requested-With': 'fetch'}, body: JSON.stringify({pts: batch})})
+    var opts = {method: 'POST', headers: {'Content-Type': 'application/json',
+      'X-Requested-With': 'fetch'}, body: JSON.stringify({pts: batch})};
+    if (keepalive) opts.keepalive = true;
+    fetch('/coverage', opts)
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (res) {
         if (res && res.ok) { covQueue.splice(0, batch.length); covPersist(); }
@@ -807,6 +814,21 @@ document.addEventListener('DOMContentLoaded', function () {
     if (covOn) addCovDisc(p);
     if (covQueue.length % 20 === 0) covFlush();   // trickle to the server; no-op when offline
   }
+  // Screen Wake Lock: a web app cannot log GPS in the background (the browser suspends
+  // hidden tabs), so the next best thing is to keep the screen awake while recording so
+  // the tab stays foreground and the position stream keeps firing. The lock is auto-
+  // released when the page hides, so it is re-acquired on visibilitychange -> visible.
+  var wakeLock = null;
+  function acquireWakeLock() {
+    if (!('wakeLock' in navigator) || wakeLock) return;
+    navigator.wakeLock.request('screen').then(function (wl) {
+      wakeLock = wl;
+      wl.addEventListener('release', function () { wakeLock = null; });
+    }).catch(function () {});   // rejects if not visible / not permitted — harmless
+  }
+  function releaseWakeLock() {
+    if (wakeLock) { wakeLock.release().catch(function () {}); wakeLock = null; }
+  }
   var recPill = document.getElementById('rec-pill');
   function reflectRec() {
     if (recPill) recPill.hidden = !recOn;
@@ -815,7 +837,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var lb = document.getElementById('layers-btn');
     if (lb) lb.classList.toggle('recording', recOn);
   }
-  function recStart() {
+  function recStart(resumed) {
     if (!navigator.geolocation) { toast('<b>' + esc(T.cov_need_gps) + '</b>', 4000); return; }
     if (!watchId) {   // recording implies GPS follow — start it like the ◎ button does
       watchId = navigator.geolocation.watchPosition(onPos, onPosErr,
@@ -823,11 +845,19 @@ document.addEventListener('DOMContentLoaded', function () {
       follow = true; var lb = document.getElementById('loc-btn'); if (lb) lb.classList.add('active');
     }
     recOn = true; covLast = null;
+    try { localStorage.setItem('wr_cov_rec', '1'); } catch (e) {}   // survive reload/close -> auto-resume
+    acquireWakeLock();
     if (!covOn) toggleCoverage();   // show the brush as it grows
     reflectRec();
-    toast('<b>' + esc(T.cov_started) + '</b>', 3500);
+    toast('<b>' + esc(resumed ? T.cov_resumed : T.cov_started) + '</b>', 3500);
   }
-  function recStop() { recOn = false; reflectRec(); covFlush(); }
+  function recStop() {
+    recOn = false;
+    try { localStorage.removeItem('wr_cov_rec'); } catch (e) {}
+    releaseWakeLock();
+    reflectRec();
+    covFlush();
+  }
   if (recPill) recPill.addEventListener('click', recStop);
 
   // ◈ layers control: virgin / distance rings / coverage moved off the rail into one
@@ -909,7 +939,23 @@ document.addEventListener('DOMContentLoaded', function () {
       if (covOn) renderCoverage();
     }).catch(function () {});
   covFlush();
-  setInterval(covFlush, 30000);
+  setInterval(function () { covFlush(); }, 30000);
+
+  // Resume where an accidental reload/close left off: if we were recording, pick it
+  // straight back up (GPS permission is already granted, so no new prompt).
+  if (wasRec) recStart(true);
+
+  // Lifecycle: get buffered points out before the tab is suspended/closed, and re-arm
+  // the wake lock (auto-released on hide) plus drain the buffer when we come back.
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      covFlush(true);   // keepalive so it survives the suspend/close
+    } else {
+      covFlushing = false;   // clear a flag that may be stuck from a frozen flush
+      if (recOn) { acquireWakeLock(); covFlush(); }
+    }
+  });
+  window.addEventListener('pagehide', function () { covFlush(true); });
 
   // ---- Crew: friends' live positions (12s poll) + own push while sharing ----
   var friendLayer = L.layerGroup().addTo(map);
