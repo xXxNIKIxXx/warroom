@@ -1125,6 +1125,10 @@ document.addEventListener('DOMContentLoaded', function () {
   function renderTour() {
     var n = tour.length;
     panel.hidden = n === 0;
+    // Persistent telemetry (step 10): the PLAN tab carries the stop count so an
+    // active tour is visible from any tab / with the sheet collapsed.
+    var tb = document.getElementById('tour-badge');
+    if (tb) { tb.textContent = n; tb.hidden = n === 0; }
     document.querySelectorAll('.tour-add').forEach(function (b) {
       var on = inTour(b.dataset.lat, b.dataset.lng);
       b.classList.toggle('on', on); b.textContent = on ? '✓' : '+';
