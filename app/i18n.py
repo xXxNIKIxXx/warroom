@@ -342,6 +342,8 @@ JS = {
                      "de": "Leichteste Flips zuerst. <b class=\"lead-txt\">Führst schon</b> = du hast dort bereits mehr APs als der Besitzer — nur noch einmal hinfahren."},
     "tour_empty": {"en": "Tap + on targets below or on map cells to plan a drive.",
                    "de": "Tipp + an Zielen unten oder auf Karten-Zellen, um eine Fahrt zu planen."},
+    # here-banner data-freshness segment (client-rendered via T.hb_live)
+    "hb_live": {"en": "live", "de": "live"},
 }
 
 

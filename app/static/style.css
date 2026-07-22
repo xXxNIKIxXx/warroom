@@ -205,6 +205,10 @@ a.rb-jump { text-decoration: none; display: inline-flex; align-items: center; }
   background: rgba(7, 9, 13, 0.94); border: 1px solid var(--edge);
 }
 .here-banner b { font-family: var(--mono); }
+/* Data-freshness tag: dim frost when fresh, red once the poll data goes stale */
+.hb-fresh { font-family: var(--mono); font-size: 0.72rem; opacity: 0.85; margin-left: 0.15rem; }
+.hb-fresh.ok { color: var(--frost); }
+.hb-fresh.old { color: var(--enemy-hot); font-weight: 700; }
 .here-banner.mine { border-color: var(--gold-soft); color: var(--gold); }
 .here-banner.enemy { border-color: var(--enemy); color: var(--enemy-hot); }
 .here-banner.enemy b { color: var(--gold-bright); }

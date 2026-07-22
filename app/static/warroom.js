@@ -32,6 +32,10 @@ document.addEventListener('DOMContentLoaded', function () {
   var HISTORY = DATA.history;
   var initTab = DATA.initTab;
   var POLL_EPOCH = DATA.pollEpoch;
+  // Data-freshness clock (step 7): reset whenever fresh poll data lands (page render
+  // or an applyLive). The here-banner shows "live" / "Nm" from it — a glanceable
+  // "is my data still updating?" that goes stale if the poller ever stalls.
+  var dataAt = Date.now();
   var COLOR = {mine: '#e8b64c', enemy: '#c9313d', free: '#5f7789'};
 
   function tf(s, o) { return s.replace(/\{(\w+)\}/g, function (_, k) { return o[k]; }); }
@@ -496,31 +500,34 @@ document.addEventListener('DOMContentLoaded', function () {
   // ---- Follow mode: own live position + "you are here" context ----
   var meMarker = null, meCircle = null, follow = false, watchId = null;
   var here = document.getElementById('here');
+  function freshTag() {
+    var mins = Math.floor((Date.now() - dataAt) / 60000);
+    var cls = mins < 7 ? 'ok' : 'old';   // ~ one poll cycle + slack
+    var txt = mins < 1 ? T.hb_live : mins + 'm';
+    return ' <span class="hb-fresh ' + cls + '">◈ ' + txt + '</span>';
+  }
   function updateHere(lat, lng) {
     if (guidanceOn) { here.hidden = true; return; }   // the nav strip owns the bottom slot during guidance
     var c = cellAt(lat, lng);
     here.hidden = false;
+    var cls, html;
     if (!c) {
       // No feed entry: either virgin land (never scanned → grab it!) or outside
       var k = Math.floor(lat / grid.lat + 1e-9) + '_' + Math.floor(lng / grid.lng + 1e-9);
-      if (virginByKey[k]) {
-        here.className = 'here-banner virgin';
-        here.innerHTML = T.here_virgin;
-      } else {
-        here.className = 'here-banner out'; here.innerHTML = T.here_out;
-      }
-      return;
-    }
-    if (c.status === 'mine') {
-      here.className = 'here-banner mine'; here.innerHTML = tf(T.here_mine, {n: (c.my_aps || 0)});
+      if (virginByKey[k]) { cls = 'here-banner virgin'; html = T.here_virgin; }
+      else { cls = 'here-banner out'; html = T.here_out; }
+    } else if (c.status === 'mine') {
+      cls = 'here-banner mine'; html = tf(T.here_mine, {n: (c.my_aps || 0)});
     } else if (c.status === 'free') {
-      here.className = 'here-banner free'; here.innerHTML = tf(T.here_free, {n: (c.my_aps || 0)});
+      cls = 'here-banner free'; html = tf(T.here_free, {n: (c.my_aps || 0)});
     } else {
-      here.className = 'here-banner enemy';
-      here.innerHTML = c.gap == null ? tf(T.here_enemy_fog, {g: esc(c.gang)})
-                     : c.gap === 0 ? tf(T.here_enemy_lead, {g: esc(c.gang)})
-                                   : tf(T.here_enemy_gap, {g: esc(c.gang), n: c.gap});
+      cls = 'here-banner enemy';
+      html = c.gap == null ? tf(T.here_enemy_fog, {g: esc(c.gang)})
+           : c.gap === 0 ? tf(T.here_enemy_lead, {g: esc(c.gang)})
+                         : tf(T.here_enemy_gap, {g: esc(c.gang), n: c.gap});
     }
+    here.className = cls;
+    here.innerHTML = html + freshTag();   // append the data-freshness segment
   }
   function onPos(p) {
     var lat = p.coords.latitude, lng = p.coords.longitude, acc = p.coords.accuracy || 0, ll = [lat, lng];
@@ -684,6 +691,11 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   loadFriends();
   setInterval(loadFriends, 12000);
+  // Keep the here-banner's freshness tag climbing even when parked (no GPS ticks).
+  setInterval(function () {
+    var mp = myPos();
+    if (mp && !here.hidden && !guidanceOn) updateHere(mp.lat, mp.lng);
+  }, 60000);
 
   // ---- Live update without reloading ----
   // If the poller has fresher data, we patch map, counters, watcher and planner
@@ -698,6 +710,7 @@ document.addEventListener('DOMContentLoaded', function () {
       .then(function (d) {
         if (!d) return;
         POLL_EPOCH = d.poll;
+        dataAt = Date.now();   // fresh poll data landed → reset the freshness clock
 
         var ig = document.getElementById('info-grid');
         if (ig && d.info_html != null) ig.innerHTML = d.info_html;
