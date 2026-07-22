@@ -424,11 +424,55 @@ document.addEventListener('DOMContentLoaded', function () {
       else showContent(t.dataset.tab);
     });
   });
+  // Drag the sheet with the finger (pointer events = touch + mouse); on release it
+  // snaps to the nearest of peek/half/full. A near-motionless press falls back to a
+  // tap that cycles up. During the drag the CSS height transition is off (.dragging)
+  // so the sheet tracks 1:1; map.invalidateSize() runs once on release via setSnap.
   var grab = document.getElementById('sheet-grab');
-  if (grab) grab.addEventListener('click', function () {
-    var order = ['peek', 'half', 'full'];
-    setSnap(order[(order.indexOf(currentSnap) + 1) % order.length]);
-  });
+  function snapPx() {
+    var vh = window.innerHeight;
+    return {peek: 0.13 * vh, half: 0.45 * vh, full: 0.88 * vh};
+  }
+  function nearestSnap(px) {
+    var s = snapPx(), best = 'half', bd = Infinity;
+    ['peek', 'half', 'full'].forEach(function (k) {
+      var d = Math.abs(px - s[k]); if (d < bd) { bd = d; best = k; }
+    });
+    return best;
+  }
+  if (grab) {
+    var dragging = false, startY = 0, startH = 0, moved = 0;
+    grab.addEventListener('pointerdown', function (e) {
+      dragging = true; moved = 0; startY = e.clientY;
+      startH = panelEl.getBoundingClientRect().height;
+      panelEl.classList.add('dragging');
+      try { grab.setPointerCapture(e.pointerId); } catch (err) {}
+      e.preventDefault();
+    });
+    grab.addEventListener('pointermove', function (e) {
+      if (!dragging) return;
+      var dy = startY - e.clientY;               // drag up = taller
+      moved = Math.max(moved, Math.abs(dy));
+      var s = snapPx();
+      panelEl.style.height = Math.max(s.peek, Math.min(s.full, startH + dy)) + 'px';
+    });
+    function endDrag() {
+      if (!dragging) return;
+      dragging = false;
+      panelEl.classList.remove('dragging');
+      if (moved < 8) {                            // a tap → cycle up
+        panelEl.style.height = '';
+        var order = ['peek', 'half', 'full'];
+        setSnap(order[(order.indexOf(currentSnap) + 1) % order.length]);
+        return;
+      }
+      var target = nearestSnap(panelEl.getBoundingClientRect().height);
+      setSnap(target);                            // add the snap class...
+      panelEl.style.height = '';                  // ...then hand height back to it (animates)
+    }
+    grab.addEventListener('pointerup', endDrag);
+    grab.addEventListener('pointercancel', endDrag);
+  }
 
   // Planner/tour how-to as a ONE-TIME coach toast instead of two permanent hint
   // paragraphs — fires the first time the planner is seen, then never again.

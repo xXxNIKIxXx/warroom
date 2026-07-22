@@ -408,16 +408,20 @@ path.cell-picked {
   min-height: 0;
   position: relative; z-index: 500;  /* covers the map's bottom here-banner when raised */
 }
-/* Bottom-sheet grab handle (mobile only; hidden on the desktop grid below) */
+/* Bottom-sheet grab handle (mobile only; hidden on the desktop grid below).
+   touch-action:none so the vertical drag doesn't scroll the page / pull-to-refresh;
+   grab-cursor to signal it is draggable. */
 .sheet-grab {
   flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
-  height: 22px; background: none; border: 0; padding: 0; cursor: pointer;
+  height: 30px; background: none; border: 0; padding: 0; cursor: grab;
+  touch-action: none;
 }
+.sheet-grab:active { cursor: grabbing; }
 .sheet-grab span {
-  width: 40px; height: 4px; border-radius: 2px; background: var(--edge);
+  width: 44px; height: 4px; border-radius: 2px; background: var(--edge);
   transition: background 0.15s ease, width 0.15s ease;
 }
-.sheet-grab:hover span, .sheet-grab:active span { background: var(--gold-soft); width: 52px; }
+.sheet-grab:hover span, .sheet-grab:active span { background: var(--gold-soft); width: 56px; }
 /* Bottom tab bar (thumb zone): last child of the panel column, so it pins to the
    bottom above the scrollable .tabc. Safe-area padding lives HERE now so the bar's
    background fills down to the screen edge and labels sit above the home indicator. */
@@ -696,6 +700,7 @@ path.cell-picked {
    keeps the panel as a fixed right flank, ignoring these heights. */
 @media (max-width: 999px) {
   .panel { flex: none; height: 45dvh; transition: height 0.22s ease; }
+  .panel.dragging { transition: none; }   /* follow the finger 1:1 while dragging */
   .panel.snap-peek { height: 13dvh; }
   .panel.snap-half { height: 45dvh; }
   .panel.snap-full { height: 88dvh; }
