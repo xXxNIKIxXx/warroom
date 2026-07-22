@@ -585,6 +585,11 @@ document.addEventListener('DOMContentLoaded', function () {
     var hero = document.getElementById('map-hero');
     if (hero) hero.style.visibility = on ? 'hidden' : (guidanceOn ? 'hidden' : '');
     var b = document.getElementById('setloc-btn'); if (b) b.classList.toggle('active', on);
+    // Exclusive mode (step 8): dim the whole app to the crosshair + confirm bar so
+    // positioning is undistracted. Hiding the sheet grows the map → invalidateSize.
+    document.body.classList.toggle('wr-setloc', on);
+    map.invalidateSize();
+    setTimeout(function () { map.invalidateSize(); }, 60);
   }
   function setManualPos(lat, lng) {
     if (watchId) { navigator.geolocation.clearWatch(watchId); watchId = null; }
