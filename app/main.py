@@ -13,7 +13,7 @@ from fastapi import Depends, FastAPI, Form, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, config, coverage, db, i18n, poller, push, queries, roads, social, web
+from . import auth, config, coverage, db, i18n, poller, push, queries, roads, routing, social, web
 from .security import SecurityHeadersMiddleware
 from .web import render
 from .wdg import Wdg, WdgError
@@ -453,6 +453,22 @@ async def snap(request: Request, conn: sqlite3.Connection = Depends(get_db),
         return JSONResponse({"points": {}})
     pts = await asyncio.to_thread(roads.snap_cells, conn, cells)
     return JSONResponse({"points": pts})
+
+
+@app.post("/api/route")
+async def api_route(request: Request, user=Depends(current_user)):
+    """Ordered tour stops → real driving route (server-side OSRM proxy; the
+    strict CSP forbids client calls to third parties, and this way only
+    cell-derived stop points ever leave the house — never live GPS)."""
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    try:
+        body = await request.json()
+        pts = body.get("pts") or []
+    except (ValueError, TypeError):
+        return JSONResponse({"error": "bad request"}, status_code=400)
+    r = await asyncio.to_thread(routing.route, pts)
+    return JSONResponse({"ok": bool(r), "route": r})
 
 
 @app.get("/api/live")

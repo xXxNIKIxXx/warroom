@@ -20,8 +20,9 @@ https://warroom.mechanics-toolbox.org/about
   near), front detection and web push ("raven post")
 - **Planner** — easiest flips first: enemy cells with the smallest AP gap, free
   cells, and *virgin land* (cells nobody ever scanned), sorted by real GPS distance
-- **Loot tour** — pick cells, get an optimized route with waypoints snapped to
-  actual roads (OpenStreetMap), in-app guidance or Google Maps hand-off
+- **Loot tour** — pick cells, get an auto-optimized route with waypoints snapped
+  to actual roads (OpenStreetMap) and the real driving route drawn in-app
+  (OSRM), in-app guidance or Google Maps hand-off
 - **Coverage brush** — opt-in GPS recording of the ground you actually covered
   while driving: every stamp carries your expected reception radius, the screen
   stays awake while recording, and an interrupted session resumes on its own

@@ -1287,11 +1287,42 @@ document.addEventListener('DOMContentLoaded', function () {
           if (len(no) + 1e-9 < len(order)) { order = no; improved = true; }
         }
     }
-    tour = order; tourOrdered = order; saveTour(); drawRoute(); renderTour();
+    tour = order; tourOrdered = order; saveTour();
+    routeGeo = null; routeKm = null;   // stale geometry — refetch for the new order
+    drawRoute(); renderTour();
+    fetchRoute();
+  }
+
+  // ---- Real driving route (server-side OSRM proxy) ----
+  // Only the road-snapped STOP points are sent — never the live GPS position;
+  // the me→first-stop leg stays an honest client-side air line. When no OSRM
+  // instance answers, everything falls back to the old dashed straight lines
+  // and the total is marked approximate.
+  var routeGeo = null, routeKm = null, routeSeq = 0, routeT = null;
+  function fetchRoute() {
+    if (routeT) clearTimeout(routeT);
+    routeT = setTimeout(function () {
+      if (!tourOrdered || tourOrdered.length < 2) { routeGeo = null; routeKm = null; return; }
+      // road-snapping still pending → the post-snap optimize will refetch with
+      // the real road points; routing cell centers now would just be wasted
+      if (tour.some(function (s) { return s.rlat === undefined; })) return;
+      var seq = ++routeSeq;
+      var pts = tourOrdered.map(function (s) { var p = stopPos(s); return [p.lat, p.lng]; });
+      fetch('/api/route', {method: 'POST', headers: {'Content-Type': 'application/json',
+        'X-Requested-With': 'fetch'}, body: JSON.stringify({pts: pts})})
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          if (seq !== routeSeq) return;   // a newer tour superseded this request
+          routeGeo = (d && d.ok && d.route) ? d.route.geometry : null;
+          routeKm = (d && d.ok && d.route) ? d.route.km : null;
+          drawRoute(); renderTour();
+        }).catch(function () {});
+    }, 600);
   }
 
   function totalKm() {
     if (!tourOrdered || !tourOrdered.length) return null;
+    if (routeKm != null) return routeKm;   // real road km across the stops
     var start = myPos(), prev = start || stopPos(tourOrdered[0]), d = 0, i = start ? 0 : 1;
     for (; i < tourOrdered.length; i++) {
       var p = stopPos(tourOrdered[i]);
@@ -1305,9 +1336,17 @@ document.addEventListener('DOMContentLoaded', function () {
     tourLayer.clearLayers();
     if (!tourOrdered || !tourOrdered.length) return;
     var start = myPos();
-    var lls = (start ? [[start.lat, start.lng]] : []).concat(
-      tourOrdered.map(function (s) { var p = stopPos(s); return [p.lat, p.lng]; }));
-    L.polyline(lls, {color: '#e8b64c', weight: 3, opacity: 0.85, dashArray: '6 6', interactive: false}).addTo(tourLayer);
+    if (routeGeo && routeGeo.length) {
+      // the real road: solid line; approach leg to stop 1 stays a faint dash
+      if (start) L.polyline([[start.lat, start.lng], routeGeo[0]],
+        {color: '#e8b64c', weight: 2, opacity: 0.55, dashArray: '2 7', interactive: false}).addTo(tourLayer);
+      L.polyline(routeGeo, {color: '#e8b64c', weight: 4, opacity: 0.9,
+        className: 'route-real', interactive: false}).addTo(tourLayer);
+    } else {
+      var lls = (start ? [[start.lat, start.lng]] : []).concat(
+        tourOrdered.map(function (s) { var p = stopPos(s); return [p.lat, p.lng]; }));
+      L.polyline(lls, {color: '#e8b64c', weight: 3, opacity: 0.85, dashArray: '6 6', interactive: false}).addTo(tourLayer);
+    }
     tourOrdered.forEach(function (s, i) {
       var p = stopPos(s);
       L.marker([p.lat, p.lng], {zIndexOffset: 700, interactive: false, icon: L.divIcon({className: 'tour-num',
@@ -1486,7 +1525,9 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     if (!n) { tourLayer.clearLayers(); return; }
     var km = totalKm();
-    tourCount.textContent = km != null ? tf(T.tour_total, {n: n, d: fmtDist(km)}) : tf(T.tour_one, {n: n});
+    // routed = real road km; fallback air-line totals are marked approximate
+    var kmTxt = km != null ? (routeKm != null ? fmtDist(km) : '≈ ' + fmtDist(km)) : null;
+    tourCount.textContent = kmTxt != null ? tf(T.tour_total, {n: n, d: kmTxt}) : tf(T.tour_one, {n: n});
     tourList.innerHTML = tour.map(function (s, i) {
       return '<li' + (tourOrdered && i >= MAPS_MAX ? ' class="over-cap"' : '') + '>' +
         (tourOrdered ? '<b>' + (i + 1) + '.</b> ' : '') +
@@ -1545,7 +1586,8 @@ document.addEventListener('DOMContentLoaded', function () {
     if (pin) { e.preventDefault(); toggleTour(pin.dataset.lat, pin.dataset.lng, pin.dataset.label); map.closePopup(); }
   });
   document.getElementById('tour-clear').addEventListener('click', function () {
-    tour = []; tourOrdered = null; stopGuidance(); tourLayer.clearLayers(); saveTour(); renderTour();
+    tour = []; tourOrdered = null; routeGeo = null; routeKm = null;
+    stopGuidance(); tourLayer.clearLayers(); saveTour(); renderTour();
   });
   document.getElementById('tour-go').addEventListener('click', function () {
     if (guidanceOn) stopGuidance(); else startGuidance();
