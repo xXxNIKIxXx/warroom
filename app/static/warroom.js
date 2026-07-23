@@ -1201,8 +1201,11 @@ document.addEventListener('DOMContentLoaded', function () {
           renderTour();
           // Road points moved the stops — re-optimize, EXCEPT during guidance:
           // reordering under an active navIdx would silently retarget the driver.
+          // Fetching the ROUTE is still safe there (geometry for the existing
+          // order, no reordering) — without it, "Guide me" tapped before the
+          // snap finished stayed on air lines for the whole drive.
           if (!guidanceOn && tour.length) optimize();
-          else if (tourOrdered) drawRoute();
+          else if (tourOrdered) { drawRoute(); fetchRoute(); }
         }
         // Cells still open? Try again later — Overpass is sometimes briefly gone.
         var open = tour.some(function (s) { return s.rlat === undefined; });
@@ -1294,20 +1297,24 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   // ---- Real driving route (server-side OSRM proxy) ----
-  // Only the road-snapped STOP points are sent — never the live GPS position;
-  // the me→first-stop leg stays an honest client-side air line. When no OSRM
-  // instance answers, everything falls back to the old dashed straight lines
-  // and the total is marked approximate.
-  var routeGeo = null, routeKm = null, routeSeq = 0, routeT = null;
+  // Sent out: the road-snapped stop points plus — when a position is set — the
+  // route start, so the approach leg is real road too (disclosed on /about).
+  // When no OSRM instance answers, everything falls back to the old dashed
+  // straight lines and the total is marked approximate.
+  var routeGeo = null, routeKm = null, routeFromPos = false, routeSeq = 0, routeT = null;
   function fetchRoute() {
     if (routeT) clearTimeout(routeT);
     routeT = setTimeout(function () {
-      if (!tourOrdered || tourOrdered.length < 2) { routeGeo = null; routeKm = null; return; }
+      if (!tourOrdered || !tourOrdered.length) { routeGeo = null; routeKm = null; return; }
       // road-snapping still pending → the post-snap optimize will refetch with
       // the real road points; routing cell centers now would just be wasted
       if (tour.some(function (s) { return s.rlat === undefined; })) return;
+      var start = myPos();
+      var pts = (start ? [[start.lat, start.lng]] : []).concat(
+        tourOrdered.map(function (s) { var p = stopPos(s); return [p.lat, p.lng]; }));
+      if (pts.length < 2) { routeGeo = null; routeKm = null; return; }
+      var fromPos = !!start;
       var seq = ++routeSeq;
-      var pts = tourOrdered.map(function (s) { var p = stopPos(s); return [p.lat, p.lng]; });
       fetch('/api/route', {method: 'POST', headers: {'Content-Type': 'application/json',
         'X-Requested-With': 'fetch'}, body: JSON.stringify({pts: pts})})
         .then(function (r) { return r.ok ? r.json() : null; })
@@ -1315,6 +1322,7 @@ document.addEventListener('DOMContentLoaded', function () {
           if (seq !== routeSeq) return;   // a newer tour superseded this request
           routeGeo = (d && d.ok && d.route) ? d.route.geometry : null;
           routeKm = (d && d.ok && d.route) ? d.route.km : null;
+          routeFromPos = fromPos && !!routeGeo;
           drawRoute(); renderTour();
         }).catch(function () {});
     }, 600);
@@ -1337,8 +1345,9 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!tourOrdered || !tourOrdered.length) return;
     var start = myPos();
     if (routeGeo && routeGeo.length) {
-      // the real road: solid line; approach leg to stop 1 stays a faint dash
-      if (start) L.polyline([[start.lat, start.lng], routeGeo[0]],
+      // the real road, incl. the approach leg when the fetch had a position;
+      // otherwise the me→route link stays a faint honest dash
+      if (start && !routeFromPos) L.polyline([[start.lat, start.lng], routeGeo[0]],
         {color: '#e8b64c', weight: 2, opacity: 0.55, dashArray: '2 7', interactive: false}).addTo(tourLayer);
       L.polyline(routeGeo, {color: '#e8b64c', weight: 4, opacity: 0.9,
         className: 'route-real', interactive: false}).addTo(tourLayer);
@@ -1549,6 +1558,9 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!tourOrdered || !tourOrdered.length) optimize();
     if (!tourOrdered || !tourOrdered.length) return;
     guidanceOn = true; navIdx = 0;
+    // always refetch on guidance start: an earlier fetch may have failed, been
+    // skipped (snap pending), or lack the approach leg from the current position
+    fetchRoute();
     here.hidden = true;   // slot spec: the nav strip owns the bottom during guidance
     renderNextmove();     // guidance takes the bottom slot → hide any next-move card
     var h = document.getElementById('map-hero'); if (h) h.style.visibility = 'hidden';
