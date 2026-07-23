@@ -29,7 +29,7 @@ def revier_cells(conn, uid: int) -> list[dict]:
     glat, glng = _grid(conn)
     gid = _gang(conn, uid)
     rows = conn.execute(
-        """SELECT t.i, t.j, t.gang_id, t.gang, t.count, t.color, t.relay,
+        """SELECT t.i, t.j, t.gang_id, t.gang, t.count, t.color, t.towers,
                   COALESCE(f.my_aps, 0) AS my_aps
            FROM territory t
            LEFT JOIN footprint_cells f ON f.user_id = t.user_id AND f.cell_key = t.cell_key
@@ -46,7 +46,7 @@ def revier_cells(conn, uid: int) -> list[dict]:
         out.append({"i": r["i"], "j": r["j"], "b": grid.bounds(r["i"], r["j"], glat, glng),
                     "status": status, "gang": r["gang"], "count": r["count"],
                     "my_aps": r["my_aps"], "gap": gap, "color": r["color"],
-                    "relay": r["relay"]})
+                    "towers": r["towers"]})
     return out
 
 
@@ -62,8 +62,7 @@ def planer(conn, uid: int, limit: int = 2000) -> list[dict]:
     # by how many of my APs are already there. gap itself is computed in Python so a
     # hidden count stays None instead of collapsing to 0 via COALESCE.
     rows = conn.execute(
-        """SELECT t.i, t.j, t.gang, t.count, t.color, t.relay,
-                  COALESCE(f.my_aps, 0) AS my_aps
+        """SELECT t.i, t.j, t.gang, t.count, t.color, COALESCE(f.my_aps, 0) AS my_aps
            FROM territory t
            LEFT JOIN footprint_cells f ON f.user_id = t.user_id AND f.cell_key = t.cell_key
            WHERE t.user_id = ? AND t.gang_id IS NOT NULL AND t.gang_id != ?
@@ -76,7 +75,7 @@ def planer(conn, uid: int, limit: int = 2000) -> list[dict]:
         out.append({"lat": grid.center(r["i"], r["j"], glat, glng)[0],
                     "lng": grid.center(r["i"], r["j"], glat, glng)[1],
                     "gang": r["gang"], "count": r["count"], "my_aps": r["my_aps"], "gap": gap,
-                    "color": r["color"], "relay": r["relay"]})
+                    "color": r["color"]})
     return out
 
 
@@ -89,7 +88,7 @@ def targets(conn, uid: int) -> list[dict]:
         # cnt/gap stay None when the feed fogs enemy strength — the client renders
         # "strength hidden" instead of a bogus 0.
         out.append({"t": "enemy", "g": p["gang"], "c": p["color"], "gap": p["gap"],
-                    "my": p["my_aps"], "cnt": p["count"], "relay": p["relay"],
+                    "my": p["my_aps"], "cnt": p["count"],
                     "lat": p["lat"], "lng": p["lng"]})
     for f in free_cells(conn, uid):
         out.append({"t": "free", "my": f["my_aps"], "lat": f["lat"], "lng": f["lng"]})

@@ -55,7 +55,6 @@ STRINGS = {
     "sort_easy": {"en": "Easiest first", "de": "Leichteste zuerst"},
     "sort_dist": {"en": "Nearest first", "de": "Nächste zuerst"},
     "sort_aps": {"en": "Most of my APs", "de": "Meiste eigene APs"},
-    "sort_relay": {"en": "Nearest mast cell", "de": "Nächste Mast-Zelle"},
     "flt_all": {"en": "All", "de": "Alle"},
     "flt_ahead": {"en": "Ahead", "de": "Führst"},
     "flt_none": {"en": "Nothing matches this filter.", "de": "Nichts passt zu diesem Filter."},
@@ -360,13 +359,11 @@ JS = {
     "lyr_virgin": {"en": "Virgin land", "de": "Neuland"},
     "lyr_rings": {"en": "Distance rings", "de": "Distanzringe"},
     "lyr_cov": {"en": "Coverage", "de": "Abdeckung"},
-    "lyr_relay": {"en": "Signal relay", "de": "Signal-Relais"},
-    # Signal Relay (wdgwars 2026-07): cells owned by GSM masts, not Wi-Fi APs
-    "relay_tag": {"en": "📡 masts", "de": "📡 Masten"},
-    "relay_line": {"en": "Decided by GSM masts, not APs — log towers here to flip it",
-                   "de": "Über GSM-Masten entschieden, nicht APs — hier Masten loggen zum Kippen"},
-    "relay_pop": {"en": "📡 Signal relay — held by masts, not APs",
-                  "de": "📡 Signal-Relais — über Masten gehalten, nicht APs"},
+    # GSM masts: informational overlay of towers logged per cell (they count as
+    # ordinary scans since wdgwars reverted the mast-ownership experiment)
+    "lyr_masts": {"en": "GSM masts", "de": "GSM-Masten"},
+    "masts_pop": {"en": "📡 {n} GSM masts logged here", "de": "📡 {n} GSM-Masten hier geloggt"},
+    "masts_pop_one": {"en": "📡 1 GSM mast logged here", "de": "📡 1 GSM-Mast hier geloggt"},
     "cov_radius": {"en": "Reception radius", "de": "Empfangsradius"},
     "cov_rec": {"en": "Record", "de": "Aufnahme"},
     "cov_stop": {"en": "Stop", "de": "Stopp"},

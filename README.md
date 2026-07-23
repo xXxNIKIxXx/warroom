@@ -13,8 +13,8 @@ https://warroom.mechanics-toolbox.org/about
 ## Features
 
 - **Battle map** — your turf glowing gold, enemy gangs in their real colors,
-  unclaimed and virgin cells, distance rings and the coverage brush as
-  toggleable layers, full-screen with follow mode (GPS)
+  unclaimed and virgin cells, distance rings, GSM-mast density and the coverage
+  brush as toggleable layers, full-screen with follow mode (GPS)
 - **Watcher** — polls the wdgwars API every 5 minutes and reports ownership
   changes on your turf, with configurable scope (own cells / gang turf / anything
   near), front detection and web push ("raven post")

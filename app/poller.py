@@ -198,7 +198,7 @@ def diff_territory(conn, lookup: dict, glat, glng, user_id: int, my_gid,
         new[k] = {"i": i, "j": j, "lat": cla, "lng": clo,
                   "gid": _num(c.get("gang_id")), "gang": c.get("gang"),
                   "uid": _num(c.get("user_id")), "count": _num(c.get("count")),
-                  "color": c.get("color"), "relay": 1 if c.get("relay") else 0}
+                  "color": c.get("color"), "towers": _num(c.get("towers")) or 0}
     # add own unoccupied footprint cells — but ONLY if they lie within the turf
     # (near an anchor); isolated stray cells thus stay out entirely
     for r in conn.execute(
@@ -207,7 +207,7 @@ def diff_territory(conn, lookup: dict, glat, glng, user_id: int, my_gid,
             cla, clo = grid.center(r["i"], r["j"], glat, glng)
             new[r["cell_key"]] = {"i": r["i"], "j": r["j"], "lat": cla, "lng": clo,
                                   "gid": None, "gang": None, "uid": None, "count": None,
-                                  "color": None, "relay": 0}
+                                  "color": None, "towers": 0}
 
     old = {row["cell_key"]: row for row in conn.execute(
         "SELECT * FROM territory WHERE user_id = ?", (user_id,))}
@@ -218,22 +218,22 @@ def diff_territory(conn, lookup: dict, glat, glng, user_id: int, my_gid,
         # autocommit mode each cell is its own commit, so rewriting an unchanged turf
         # (tens of thousands of cells for big players) every cycle was the dominant
         # cost — in steady state almost nothing changes, so almost nothing is written.
-        # p["relay"] is absent on rows written before the migration → treat as 0
-        p_relay = (p["relay"] if p is not None and "relay" in p.keys() else 0)
+        # p["towers"] is absent on rows written before the migration → treat as 0
+        p_towers = (p["towers"] if p is not None and "towers" in p.keys() else 0)
         if p is None or (_num(p["gang_id"]) != n["gid"] or p["count"] != n["count"]
                          or p["color"] != n["color"] or _num(p["owner_user_id"]) != n["uid"]
-                         or p_relay != n["relay"]):
+                         or p_towers != n["towers"]):
             conn.execute(
                 """INSERT INTO territory (user_id, cell_key, i, j, lat, lng, gang_id, gang,
-                         owner_user_id, count, color, relay, updated_at)
+                         owner_user_id, count, color, towers, updated_at)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
                    ON CONFLICT(user_id, cell_key) DO UPDATE SET
                      gang_id=excluded.gang_id, gang=excluded.gang,
                      owner_user_id=excluded.owner_user_id, count=excluded.count,
-                     color=excluded.color, relay=excluded.relay,
+                     color=excluded.color, towers=excluded.towers,
                      updated_at=excluded.updated_at""",
                 (user_id, k, n["i"], n["j"], n["lat"], n["lng"], n["gid"], n["gang"],
-                 n["uid"], n["count"], n["color"], n["relay"]),
+                 n["uid"], n["count"], n["color"], n["towers"]),
             )
         if initialized and p:
             prev_gid, cur_gid = _num(p["gang_id"]), n["gid"]

@@ -424,7 +424,6 @@ def index(request: Request, conn: sqlite3.Connection = Depends(get_db), user=Dep
         "n_ahead": sum(1 for p in _pl if p["gap"] == 0),
         "n_free": sum(1 for t in _tg if t["t"] == "free"),
         "n_virgin": len(_vg) // 2,
-        "n_relay": sum(1 for t in _tg if t.get("relay")),
         "events": queries.recent_events(conn, uid), "theatres": queries.theatres(conn, uid),
         "fronts": queries.fronts(conn, uid),
         "friends": social.overview(conn, uid), "sharing": social.sharing_state(conn, uid),
@@ -479,7 +478,6 @@ def live(request: Request, conn: sqlite3.Connection = Depends(get_db),
         "n_ahead": sum(1 for p in pl if p["gap"] == 0),
         "n_free": sum(1 for t in _targets if t["t"] == "free"),
         "n_virgin": len(_virgin) // 2,
-        "n_relay": sum(1 for t in _targets if t.get("relay")),
         # For the info-grid fragment — these change every poll (last_poll, turf cell
         # count, stats) or when someone registers (user_count), but weren't refreshed
         # in-place before, so the info tab only updated on a full page reload.
