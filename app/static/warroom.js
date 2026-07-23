@@ -119,7 +119,8 @@ document.addEventListener('DOMContentLoaded', function () {
     cellByKey = {};
     cells.forEach(function (c) { cellByKey[c.i + '_' + c.j] = c; });
     cells.forEach(function (c) {
-      var lead = c.status === 'enemy' && c.gap === 0;
+      // a mast-held cell is never an "AP lead" — its gap is meaningless
+      var lead = c.status === 'enemy' && c.gap === 0 && !c.relay;
       // Enemies in their real gang color (CHAOS vs BWM distinguishable), own gold, free cold
       var fill = c.status === 'enemy' ? (c.color || COLOR.enemy) : COLOR[c.status];
       var r = L.rectangle(c.b, {
@@ -136,6 +137,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     : c.gap === 0 ? '<b>' + T.lead_excl + '</b>'
                     : tf(T.to_flip, {n: c.gap}))
         : '';
+      // A mast-held cell doesn't flip on APs — say so instead of a misleading gap
+      if (c.relay) extra = '<br>' + T.relay_pop;
       var cc = [(c.i + 0.5) * grid.lat, (c.j + 0.5) * grid.lng];
       r.bindPopup('<b>' + label + '</b><br>' + tf(T.your_aps, {n: (c.my_aps || 0)}) + extra +
         '<br><button type="button" class="cell-tour" data-lat="' + cc[0].toFixed(5) + '" data-lng="' + cc[1].toFixed(5) +
@@ -176,6 +179,32 @@ document.addEventListener('DOMContentLoaded', function () {
     virginOn = !virginOn;
     if (virginOn) { virginLayer.addTo(map); renderVirgin(); snapVirginWater(); }
     else { virginLayer.clearLayers(); map.removeLayer(virginLayer); }
+    if (typeof reflectLayers === 'function') reflectLayers();
+  }
+
+  // ---- Signal relay: cells whose ownership is decided by GSM masts, not Wi-Fi
+  // (wdgwars 2026-07). c.relay === 1 marks them. Own layer, toggled from the ◈
+  // popover — a pulsing violet field so a mast-contested cell stands out from the
+  // ordinary gang colour, because on those the AP gap does not apply.
+  var relayLayer = L.layerGroup();
+  var relayOn = false;
+  function renderRelay() {
+    relayLayer.clearLayers();
+    if (!relayOn) return;
+    cells.forEach(function (c) {
+      if (!c.relay) return;
+      var b = [[c.i * grid.lat, c.j * grid.lng],
+               [(c.i + 1) * grid.lat, (c.j + 1) * grid.lng]];
+      L.rectangle(b, {color: '#c04bff', weight: 2, opacity: 0.9, fillColor: '#c04bff',
+                      fillOpacity: 0.14, className: 'relay-cell'})
+        .bindPopup('<b>' + T.relay_pop + '</b>')
+        .addTo(relayLayer);
+    });
+  }
+  function toggleRelay() {
+    relayOn = !relayOn;
+    if (relayOn) { relayLayer.addTo(map); renderRelay(); }
+    else { relayLayer.clearLayers(); map.removeLayer(relayLayer); }
     if (typeof reflectLayers === 'function') reflectLayers();
   }
   // Virgin cells sit purely on geometry, so some land in lakes/rivers (Lake Erie).
@@ -266,7 +295,7 @@ document.addEventListener('DOMContentLoaded', function () {
   function plMatch(c) {
     var m = plFilter.mode;
     return m === 'all'
-      || (m === 'ahead' && c.t === 'enemy' && c.gap === 0)
+      || (m === 'ahead' && c.t === 'enemy' && c.gap === 0 && !c.relay)
       || (m === 'free' && c.t === 'free')
       || (m === 'virgin' && c.t === 'virgin')
       || (m === 'gang' && c.t === 'enemy' && c.g === plFilter.gang);
@@ -274,15 +303,17 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function plEffort(c) {
     // Fogged enemy cells (gap unknown) sort last under "easiest first" — we can't
-    // rank an unknown deficit, so don't pretend it's 0.
+    // rank an unknown deficit, so don't pretend it's 0. Mast-held cells sort just
+    // ahead of fogged: they're flippable, but not by APs, so not an "easy" AP flip.
     if (c.t === 'free') return 0;
     if (c.t === 'virgin') return 1;
+    if (c.relay) return 8e9;
     return c.gap == null ? 9e9 : c.gap + 1;
   }
 
   function plRow(c, gps) {
     var li = document.createElement('li');
-    li.className = 'pl-item' + (c.t === 'enemy' && c.gap === 0 ? ' pl-lead' : '');
+    li.className = 'pl-item' + (c.t === 'enemy' && c.gap === 0 && !c.relay ? ' pl-lead' : '');
     li.dataset.lat = c.lat;
     li.dataset.lng = c.lng;
     var dist = (gps && c._d != null) ? fmtDist(c._d) : '';
@@ -290,7 +321,10 @@ document.addEventListener('DOMContentLoaded', function () {
     if (c.t === 'enemy') {
       label = esc(c.g);
       dot = '<span class="pl-dot"' + (c.c ? ' style="background:' + esc(c.c) + '"' : '') + '></span>';
-      if (c.gap == null) {   // feed fogs enemy strength this season — no bogus gap/bar
+      if (c.relay) {   // mast-held: the AP gap is meaningless here, flag it as such
+        tag = '<span class="pl-gap relay">' + esc(T.relay_tag) + '</span>';
+        line = '<div class="pl-row2">' + esc(T.relay_line) + '</div>';
+      } else if (c.gap == null) {   // feed fogs enemy strength this season — no bogus gap/bar
         tag = '<span class="pl-gap fog">' + esc(T.fog_tag) + '</span>';
         line = '<div class="pl-row2">' + esc(T.fog_line) + '</div>';
       } else {
@@ -869,6 +903,8 @@ document.addEventListener('DOMContentLoaded', function () {
       '<span class="lyr-ic">◇</span>' + esc(T.lyr_virgin) + '</button>';
     rows += '<button type="button" class="lyr-row" data-layer="rings">' +
       '<span class="lyr-ic">⊚</span>' + esc(T.lyr_rings) + '</button>';
+    rows += '<button type="button" class="lyr-row" data-layer="relay">' +
+      '<span class="lyr-ic">📡</span>' + esc(T.lyr_relay) + '</button>';
     rows += '<div class="lyr-sep"></div>' +
       '<button type="button" class="lyr-row" data-layer="cov"><span class="lyr-ic">▨</span>' + esc(T.lyr_cov) + '</button>' +
       '<div class="cov-ctrls">' +
@@ -888,7 +924,7 @@ document.addEventListener('DOMContentLoaded', function () {
   function reflectLayers() {
     var box = document.getElementById('layers-box');
     if (!box) return;
-    var st = {virgin: virginOn, rings: ringsOn, cov: covOn};
+    var st = {virgin: virginOn, rings: ringsOn, relay: relayOn, cov: covOn};
     box.querySelectorAll('.lyr-row').forEach(function (row) {
       row.classList.toggle('on', !!st[row.dataset.layer]);
     });
@@ -910,6 +946,7 @@ document.addEventListener('DOMContentLoaded', function () {
       var l = row.dataset.layer;
       if (l === 'virgin') toggleVirgin();
       else if (l === 'rings') toggleRings();
+      else if (l === 'relay') toggleRelay();
       else if (l === 'cov') toggleCoverage();
     });
   });
@@ -1040,6 +1077,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (d.cells && !document.querySelector('.leaflet-popup')) {
           cells = d.cells;
           renderCells();
+          if (relayOn) renderRelay();   // relay flags ride on the same cells
           var mp = myPos();
           if (mp && !here.hidden) updateHere(mp.lat, mp.lng);
         }

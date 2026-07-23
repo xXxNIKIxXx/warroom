@@ -39,6 +39,9 @@ CREATE TABLE IF NOT EXISTS territory (
     cell_key TEXT NOT NULL,
     i INTEGER NOT NULL, j INTEGER NOT NULL, lat REAL, lng REAL,
     gang_id INTEGER, gang TEXT, owner_user_id INTEGER, count INTEGER, color TEXT,
+    -- Signal Relay (wdgwars 2026-07): 1 = this cell holds GSM masts, so its
+    -- ownership is decided by mast count, not Wi-Fi APs. The AP gap does not apply.
+    relay INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (user_id, cell_key)
 );
@@ -150,6 +153,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     # Migrations for existing DBs (CREATE IF NOT EXISTS does not alter columns)
     _add_col(conn, "users", "watch_level", "TEXT NOT NULL DEFAULT 'near'")
     _add_col(conn, "events", "proximity", "TEXT")
+    _add_col(conn, "territory", "relay", "INTEGER NOT NULL DEFAULT 0")
 
 
 def kv_get(conn, key: str, default=None):

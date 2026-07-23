@@ -359,6 +359,13 @@ JS = {
     "lyr_virgin": {"en": "Virgin land", "de": "Neuland"},
     "lyr_rings": {"en": "Distance rings", "de": "Distanzringe"},
     "lyr_cov": {"en": "Coverage", "de": "Abdeckung"},
+    "lyr_relay": {"en": "Signal relay", "de": "Signal-Relais"},
+    # Signal Relay (wdgwars 2026-07): cells owned by GSM masts, not Wi-Fi APs
+    "relay_tag": {"en": "📡 masts", "de": "📡 Masten"},
+    "relay_line": {"en": "Decided by GSM masts, not APs — log towers here to flip it",
+                   "de": "Über GSM-Masten entschieden, nicht APs — hier Masten loggen zum Kippen"},
+    "relay_pop": {"en": "📡 Signal relay — held by masts, not APs",
+                  "de": "📡 Signal-Relais — über Masten gehalten, nicht APs"},
     "cov_radius": {"en": "Reception radius", "de": "Empfangsradius"},
     "cov_rec": {"en": "Record", "de": "Aufnahme"},
     "cov_stop": {"en": "Stop", "de": "Stopp"},
